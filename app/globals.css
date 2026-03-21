@@ -1,0 +1,166 @@
+@import "tailwindcss";
+
+:root {
+  --bg-dark: #1d1f27;
+  --bg-light: #20222b;
+  --bg-primary: #282A33;
+  --foreground: #e1e3e7;
+  --main-width: 570px;
+  --main-blue-clr: #419CC8;
+  --main-dark-blue-clr: rgb(49, 127, 167);
+}
+* {
+  box-sizing: border-box;
+}
+@theme inline {
+  --color-dark-clr: var(--bg-dark);
+  --color-light-clr: var(--bg-light);
+  --color-primary: var(--bg-primary);
+  --color-main-blue: var(--main-blue-clr);
+  --color-main-dark-blue: var(--main-dark-blue-clr);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --container-main: var(--main-width);
+  --color-main-border: #6868683d;
+  --shadow-main: 0 0 17px 2px #419bc845;
+}
+
+.transition-slow {
+  transition: 0.6s;
+}
+
+@media only screen and (max-width: 1024px) {
+  :root {
+    --main-width: 500px;
+  }
+}
+
+@media only screen and (max-width: 768px) {
+  :root {
+    --main-width: 100%;
+  }
+}
+
+input::placeholder {
+  color: #bebec0;
+}
+
+.btn-gradient {
+  background: linear-gradient(135deg, var(--main-blue-clr), #3990bb, #33809e, #26498b);
+  background-size: 200% 200%;
+  background-position: 10% 100%;
+  transition: background-position 0.4s ease;
+  padding: 7px 28px;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 0 17px 2px #419bc845;
+  color: white;
+  display: flex;
+  align-items: center;
+}
+
+.btn-gradient:hover {
+  background-position: 98% 100%;
+}
+
+.menu-shadow {
+  filter: drop-shadow(0 0 4px #419bc863);
+}
+
+.friends-online {
+}
+.friends-online::-webkit-scrollbar {
+  width: 10px;
+  background-color: transparent;
+}
+.friends-online::-webkit-scrollbar-track {
+  border-radius: 10px;
+  background-color: transparent;
+}
+.friends-online::-webkit-scrollbar-thumb {
+  background: var(--bg-dark);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.post-open {
+}
+.post-open::-webkit-scrollbar {
+  width: 10px;
+  border-radius: 10px;
+  background-color: var(--bg-primary);
+}
+.post-open::-webkit-scrollbar-thumb {
+  background: var(--foreground);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.bg-gradient {
+  height: 100vh;
+  background: linear-gradient(45deg, var(--bg-dark), var(--bg-primary));
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg fill='white' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 4px center;
+}
+
+.partial-dark-gradient:hover .gradient-inner-div {
+  background: linear-gradient(359deg, #000000cf, #10101059, transparent);
+}
+
+.triangle-shape {
+  clip-path: polygon(0 0, 0% 100%, 100% 50%);
+}
+
+
+/* ------------- Skeleton ------------- */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 255, 255, 0.05) 75%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 1.6s infinite linear;
+}
+/* ------------- Skeleton Ended ------------- */
+
+.editable-div:empty::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+  display: block;
+}
+
+.editable-div.is-empty::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+  position: absolute;
+}
+
+.editable-div {
+  position: relative;
+}
+
+.modelpostopen-bg {
+  background: linear-gradient(180deg, black, transparent);
+}
