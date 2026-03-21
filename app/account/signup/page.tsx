@@ -5,10 +5,13 @@ import Link from "next/link";
 import { useForm } from "react-hook-form"
 import { GoMail } from "react-icons/go";
 import { LuLockKeyhole } from "react-icons/lu";
-import { useEffect, useState } from "react";
+import { ChangeEvent, useEffect, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 import GoogleIcon from "public/icons/google.svg"
+import { MdPerson } from "react-icons/md";
+import { BiImageAdd } from "react-icons/bi";
+import { IoCamera } from "react-icons/io5";
 
 type FormValues = {
     firstName: string;
@@ -24,9 +27,26 @@ type FormValues = {
 
 export default function page() {
     const [isLoad, setIsLoad] = useState(false);
+    const [file, setFile] = useState<File | null>(null);
 
     const [step, setStep] = useState(2);
-    const [imagePreview, setImagePreview] = useState<string | null>(null);
+    const [preview, setPreview] = useState<string | null>("https://ntvb.tmsimg.com/assets/assets/487578_v9_bb.jpg?w=360&h=480");
+
+    const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+        const selectedFile = e.target.files?.[0];
+        if (selectedFile) {
+            setFile(selectedFile);
+        }
+    };
+
+    useEffect(() => {
+        if (!file) return;
+
+        const objectUrl = URL.createObjectURL(file);
+        setPreview(objectUrl);
+
+        return () => URL.revokeObjectURL(objectUrl);
+    }, [file]);
 
     const { data: session } = useSession();
     useEffect(() => {
@@ -217,6 +237,42 @@ export default function page() {
                     )
                 }
 
+                {
+                    step === 2 && (
+                        <div className='flex justify-between mt-6'>
+                            <div className="group min-w-[200px] w-[200px] h-[200px] max-w-[200px] max-h-[200px] min-h-[200px] relative partial-dark-gradient">
+                                <div className="w-full h-full rounded-full overflow-hidden relative bg-zinc-900 flex items-center justify-center">
+                                    {
+                                        preview ?
+                                            <Image src={preview} alt="s" width={100} height={100} className="w-full h-full object-cover" />
+                                            : <MdPerson className="text-white/60 text-7xl" />
+                                    }
+                                    <div className="absolute bottom-0 w-full h-full cursor-pointer gradient-inner-div"></div>
+                                </div>
+                                <ul className="w-full group-hover:block hidden z-10 text-black rounded-md overflow-hidden bg-white absolute top-[100px] left-0 text-[14px]">
+                                    <li>
+                                        <button className="px-2 py-[6px] w-full text-start transition-all hover:bg-gray-200 cursor-pointer flex gap-1 items-center">
+                                            <IoCamera className="text-[18px]" /> Camera
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <input type="file" id="image-upload-in-setting" className="hidden" accept="image/*" onChange={handleChange} />
+                                        <label htmlFor="image-upload-in-setting" className="px-2 py-[6px] w-full text-start transition-all hover:bg-gray-200 cursor-pointer flex gap-1 items-center">
+                                            <BiImageAdd className="text-[18px]" /> Browse
+                                        </label>
+                                    </li>
+                                    <li>
+                                        <button onClick={() => {
+                                            setFile(null); setPreview(null);
+                                        }} className="px-2 py-[6px] w-full text-start transition-all hover:bg-gray-200 cursor-pointer flex gap-1 items-center">
+                                            Remove Picture
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    )
+                }
 
             </div>
         </div>

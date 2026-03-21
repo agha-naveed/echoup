@@ -47,7 +47,7 @@ const page = () => {
 
     return (
         <div className="md:w-fit w-full flex flex-col gap-7 h-screen">
-            <div className='bg-primary flex gap-8 rounded-2xl w-[800px] h-fit border border-main-border shadow-lg px-5 py-4 w-full'>
+            <div className='bg-primary flex gap-8 rounded-2xl w-[800px] h-fit border border-main-border shadow-lg px-5 py-4'>
                 <div className='flex justify-between mt-6'>
                     <div className="group min-w-[120px] w-[120px] h-[120px] max-w-[120px] max-h-[120px] min-h-[120px] relative partial-dark-gradient">
                         <div className="w-full h-full rounded-full overflow-hidden relative bg-zinc-900 flex items-center justify-center">
