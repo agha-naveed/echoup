@@ -9,9 +9,11 @@
   --main-blue-clr: #419CC8;
   --main-dark-blue-clr: rgb(49, 127, 167);
 }
+
 * {
   box-sizing: border-box;
 }
+
 @theme inline {
   --color-dark-clr: var(--bg-dark);
   --color-light-clr: var(--bg-light);
@@ -69,29 +71,32 @@ input::placeholder {
   filter: drop-shadow(0 0 4px #419bc863);
 }
 
-.friends-online {
-}
+.friends-online {}
+
 .friends-online::-webkit-scrollbar {
   width: 10px;
   background-color: transparent;
 }
+
 .friends-online::-webkit-scrollbar-track {
   border-radius: 10px;
   background-color: transparent;
 }
+
 .friends-online::-webkit-scrollbar-thumb {
   background: var(--bg-dark);
   border-radius: 10px;
   cursor: pointer;
 }
 
-.post-open {
-}
+.post-open {}
+
 .post-open::-webkit-scrollbar {
   width: 10px;
   border-radius: 10px;
   background-color: var(--bg-primary);
 }
+
 .post-open::-webkit-scrollbar-thumb {
   background: var(--foreground);
   border-radius: 10px;
@@ -99,7 +104,6 @@ input::placeholder {
 }
 
 .bg-gradient {
-  height: 100vh;
   background: linear-gradient(45deg, var(--bg-dark), var(--bg-primary));
 }
 
@@ -126,21 +130,21 @@ select {
   0% {
     background-position: -1000px 0;
   }
+
   100% {
     background-position: 1000px 0;
   }
 }
 
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.05) 25%,
-    rgba(255, 255, 255, 0.15) 50%,
-    rgba(255, 255, 255, 0.05) 75%
-  );
+  background: linear-gradient(90deg,
+      rgba(255, 255, 255, 0.05) 25%,
+      rgba(255, 255, 255, 0.15) 50%,
+      rgba(255, 255, 255, 0.05) 75%);
   background-size: 1000px 100%;
   animation: shimmer 1.6s infinite linear;
 }
+
 /* ------------- Skeleton Ended ------------- */
 
 .editable-div:empty::before {
