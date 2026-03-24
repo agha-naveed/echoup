@@ -9,7 +9,7 @@ const CreatePost = () => {
     const [isFocus, setIsFocus] = useState(false)
     const [isEmpty, setIsEmpty] = useState(true);
 
-    const handleInput = (e:any) => {
+    const handleInput = (e: any) => {
         const text = e.currentTarget.textContent.trim();
         setIsEmpty(!text);
     };
@@ -28,7 +28,7 @@ const CreatePost = () => {
                         aria-multiline="true"
                         data-placeholder="Type Something..."
                         className={`editable-div post-open overflow-y-auto ${isEmpty ? "is-empty" : ""} min-h-[50px] lg:max-h-[400px] max-h-[300px] focus:min-h-[100px] lg:w-[498px] w-md:[400px] overflow-hidden resize-none p-1 outline-none
-                        whitespace-pre-wrap break-words break-all select-text`}>
+                        whitespace-pre-wrap wrap-break-words break-all select-text`}>
                     </div>
                 </div>
             </div>
