@@ -14,6 +14,7 @@ import { signIn, signOut, useSession } from "next-auth/react";
 import GoogleIcon from "public/icons/google.svg"
 import { BsCameraFill } from "react-icons/bs";
 import axios from "axios";
+import { useRouter } from "next/navigation";
 
 export default function Page() {
     const [isLoad, setIsLoad] = useState(false);
@@ -22,7 +23,6 @@ export default function Page() {
     const [step, setStep] = useState(1);
     const [preview, setPreview] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
 
     const { data: session, status } = useSession();
 
@@ -101,6 +101,8 @@ export default function Page() {
         }
     };
 
+    const navigate = useRouter()
+
     const monthsShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const startYear = 1950;
     const currentYear = new Date().getFullYear();
@@ -108,42 +110,67 @@ export default function Page() {
 
     const onSubmit = handleSubmit(async (data) => {
         setIsProcessing(true);
-        const formattedDate = `${data.year}-${data.month.padStart(2, '0')}-${data.date.padStart(2, '0')}`;
+        const actualMonth = (parseInt(data.month) + 1).toString();
+        const formattedDate = `${data.year}-${actualMonth.padStart(2, '0')}-${data.date.padStart(2, '0')}`;
         try {
             const userResponse = await axios.get(`/api/account/signup/?username=${data.username}`);
             if (userResponse.status == 200) {
                 if (selectedOption == "upload" && file) {
                     const formData = new FormData();
                     formData.append("file", file);
-                    formData.append("upload_preset", "echo_up_profiles");
+                    formData.append("upload_preset", "my-images");
+
+                    const cloudinaryRes = await axios.post(
+                        `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
+                        formData
+                    );
+
+                    const finalProfileImageUrl = cloudinaryRes.data.secure_url;
+                    console.log("Final Submission:", {
+                        ...data,
+                        imageOption: selectedOption,
+                        finalProfileImage: finalProfileImageUrl
+                    });
+                    const addData = await axios.post("/api/account/signup", {
+                        ...data, profileImage: finalProfileImageUrl, dateOfBirth: formattedDate
+                    })
+                    if (addData.status == 200) {
+                        navigate.push("/account");
+                    }
+                    else {
+                        setError("root", { type: "manual", message: "Some Problem Occurred." });
+                    }
                 }
-                if (selectedOption === "google") {
+                else if (selectedOption === "google") {
                     const addData = await axios.post("/api/account/signup", {
                         ...data, profileImage: session?.user?.image, dateOfBirth: formattedDate
                     })
+                    if (addData.status == 200) {
+                        navigate.push("/account");
+                    }
+                    else {
+                        setError("root", { type: "manual", message: "Some Problem Occurred." });
+                    }
                 }
                 else {
                     const addData = await axios.post("/api/account/signup", data)
+                    if (addData.status == 200) {
+                        navigate.push("/account");
+                    }
+                    else {
+                        setError("root", { type: "manual", message: "Some Problem Occurred." });
+                    }
                 }
             }
-            const userData = await userResponse.data;
 
-            if (userData.exists) {
+            else {
+                console.log(userResponse.data)
                 setError("username", { type: "manual", message: "This username is already taken." });
                 setIsProcessing(false);
                 return;
             }
-
-            const finalProfileImage = selectedOption === "google" ? session?.user?.image : file;
-
-            console.log("Final Submission:", {
-                ...data,
-                imageOption: selectedOption,
-                finalProfileImage
-            });
-
         } catch (error) {
-            console.error("Submission error:", error);
+            setError("username", { type: "manual", message: "This username is already taken." });
         } finally {
             setIsProcessing(false);
         }
@@ -328,10 +355,12 @@ export default function Page() {
 
                                 <div className="flex flex-col items-center gap-4 mt-2">
                                     <button type="button" onClick={() => setStep(3)} className="w-full md:py-[10px] py-2 bg-main-blue rounded-lg md:text-[17px] font-medium cursor-pointer transition-all hover:bg-main-dark-blue text-white">
-                                        Confirm Image
+                                        {
+                                            session || file ?
+                                                "Confirm Image" : "Skip for now"
+                                        }
                                     </button>
 
-                                    {/* Only show the Back button if they DID NOT sign up with Google */}
                                     {!session && (
                                         <button type="button" className="text-gray-400 hover:text-white text-sm font-medium transition-colors" onClick={() => setStep(1)}>
                                             Back to Info
@@ -350,13 +379,15 @@ export default function Page() {
                                 </div>
 
                                 <div className="relative mb-8 mt-2">
-                                    <span className="absolute left-4 md:top-[12px] top-[10px] text-gray-400 font-bold text-lg">@</span>
-                                    <input
-                                        type="text"
-                                        placeholder="username"
-                                        className={`w-full h-full bg-primary md:text-[17px] outline-none border ${errors.username ? "border-red-600/80" : "border-white/20"} md:py-3 py-[10px] pl-10 pr-4 rounded-lg`}
-                                        {...register("username")}
-                                    />
+                                    <div>
+                                        <span className="absolute left-4 md:top-[12px] top-[10px] text-gray-400 font-bold text-lg">@</span>
+                                        <input
+                                            type="text"
+                                            placeholder="username"
+                                            className={`w-full h-full bg-primary md:text-[17px] outline-none border ${errors.username ? "border-red-600/80" : "border-white/20"} md:py-3 py-[10px] pl-10 pr-4 rounded-lg`}
+                                            {...register("username")}
+                                        />
+                                    </div>
                                     {errors.username && <p className="text-red-600/80 text-[14px] mt-2">{errors.username.message}</p>}
                                 </div>
 
