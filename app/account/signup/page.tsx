@@ -4,7 +4,6 @@ import Image from "next/image"
 import Link from "next/link";
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { CldImage } from 'next-cloudinary';
 import { signUpFormSchema, type SignUpFormValues } from "@/schema/user";
 
 import { GoMail } from "react-icons/go";
@@ -58,7 +57,7 @@ export default function Page() {
     })
 
     useEffect(() => {
-        if (status === "authenticated" && session?.user) {
+        if (status === "authenticated" && session?.user && step === 1) {
 
             const nameParts = session.user.name?.split(" ") || [];
             const firstName = nameParts[0] || "";
@@ -69,9 +68,7 @@ export default function Page() {
             if (session.user.email) {
                 setValue("email", session.user.email);
             }
-
             setSelectedOption("google");
-            setStep(2);
         }
     }, [session, status, setValue]);
 
@@ -109,23 +106,27 @@ export default function Page() {
     const years = Array.from({ length: currentYear - startYear + 1 }, (_, i) => currentYear - i);
 
     const onSubmit = handleSubmit(async (data) => {
+        console.log(data)
         setIsProcessing(true);
         const actualMonth = (parseInt(data.month) + 1).toString();
         const formattedDate = `${data.year}-${actualMonth.padStart(2, '0')}-${data.date.padStart(2, '0')}`;
         try {
             const userResponse = await axios.get(`/api/account/signup/?username=${data.username}`);
             if (userResponse.status == 200) {
-                if (selectedOption == "upload" && file) {
-                    const formData = new FormData();
-                    formData.append("file", file);
-                    formData.append("upload_preset", "my-images");
+                let finalProfileImageUrl;
+                if (selectedOption == "upload") {
+                    if (file) {
+                        const formData = new FormData();
+                        formData.append("file", file);
+                        formData.append("upload_preset", "my-images");
 
-                    const cloudinaryRes = await axios.post(
-                        `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
-                        formData
-                    );
+                        const cloudinaryRes = await axios.post(
+                            `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
+                            formData
+                        );
 
-                    const finalProfileImageUrl = cloudinaryRes.data.secure_url;
+                        finalProfileImageUrl = cloudinaryRes.data.secure_url;
+                    }
                     console.log("Final Submission:", {
                         ...data,
                         imageOption: selectedOption,
@@ -142,8 +143,20 @@ export default function Page() {
                     }
                 }
                 else if (selectedOption === "google") {
+                    if (file) {
+                        const formData = new FormData();
+                        formData.append("file", file);
+                        formData.append("upload_preset", "my-images");
+
+                        const cloudinaryRes = await axios.post(
+                            `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
+                            formData
+                        );
+
+                        finalProfileImageUrl = cloudinaryRes.data.secure_url;
+                    }
                     const addData = await axios.post("/api/account/signup", {
-                        ...data, profileImage: session?.user?.image, dateOfBirth: formattedDate
+                        ...data, profileImage: file ? finalProfileImageUrl : session?.user?.image, dateOfBirth: formattedDate
                     })
                     if (addData.status == 200) {
                         navigate.push("/account");
@@ -201,21 +214,37 @@ export default function Page() {
                         {/* STEP 1 */}
                         <div className="w-full shrink-0 flex justify-center px-4">
                             <div className="flex flex-col gap-3 w-full items-center">
-                                {!session && (
-                                    <button type="button" onClick={() => signIn("google")} className="border border-white flex items-center py-[10px] w-full md:w-[550px] justify-center gap-3 rounded-lg cursor-pointer transition-all hover:bg-white hover:text-black" title="Signin with Google">
-                                        <Image src={GoogleIcon} width={20} height={20} alt="Google Logo" />
-                                        <span>Sign up with Google</span>
-                                    </button>
-                                )}
-
-                                {!session && (
-                                    <div className="flex gap-4 my-5 items-center w-full md:w-[550px]">
-                                        <div className="w-full h-px border-t border-t-gray-300"></div>
-                                        <span className="text-[14px] text-gray-300">OR</span>
-                                        <div className="w-full h-px border-t border-t-gray-300"></div>
+                                {!session ? (
+                                    <>
+                                        <button type="button" onClick={() => signIn("google")} className="border border-white flex items-center py-[10px] w-full md:w-[550px] justify-center gap-3 rounded-lg cursor-pointer transition-all hover:bg-white hover:text-black" title="Signin with Google">
+                                            <Image src={GoogleIcon} width={20} height={20} alt="Google Logo" />
+                                            <span>Sign up with Google</span>
+                                        </button>
+                                        <div className="flex gap-4 my-5 items-center w-full md:w-[550px]">
+                                            <div className="w-full h-px border-t border-t-gray-300"></div>
+                                            <span className="text-[14px] text-gray-300">OR</span>
+                                            <div className="w-full h-px border-t border-t-gray-300"></div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="flex flex-col items-center gap-2 w-full md:w-[550px] bg-white/5 border border-white/10 p-4 rounded-lg mb-4">
+                                        <div className="flex items-center gap-3">
+                                            {session.user?.image && (
+                                                <Image src={session.user.image} alt="Profile" width={30} height={30} className="rounded-full" />
+                                            )}
+                                            <p className="text-sm text-gray-300">
+                                                Continuing as <strong className="text-white">{session.user?.name}</strong>
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => signOut()}
+                                            className="text-sm text-main-blue transition-colors mt-1 cursor-pointer hover:underline"
+                                        >
+                                            Not you? Use a different account
+                                        </button>
                                     </div>
                                 )}
-
                                 <div className="shadow-[0px_2px_25px_#8b8b8b1c] bg-dark-clr grid gap-4 md:px-8 md:py-8 px-5 py-6 rounded-xl md:w-[550px] w-full">
                                     <div className="flex items-center gap-3 select-none">
                                         <Image src={logo} alt="logo" className="md:w-[35px] w-[30px]" />
@@ -281,7 +310,8 @@ export default function Page() {
                                             <div className="relative">
                                                 <GoMail className="absolute md:top-[16px] top-[13px] left-[16px] text-[18px]" />
                                                 <input type="email"
-                                                    className={`w-full h-full bg-primary text-[17px] outline-none border md:py-3 py-[10px] pl-11 pr-4 rounded-lg ${errors.email ? "border-red-600/80" : "border-white/20"}`}
+                                                    disabled={!!session}
+                                                    className={`w-full h-full bg-primary text-[17px] outline-none border ${session && "cursor-not-allowed bg-dark-clr! text-gray-500"} md:py-3 py-[10px] pl-11 pr-4 rounded-lg ${errors.email ? "border-red-600/80" : "border-white/20"}`}
                                                     placeholder="Email"
                                                     {...register("email")} />
                                             </div>
