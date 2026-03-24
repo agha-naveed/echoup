@@ -8,7 +8,7 @@ export async function proxy(req: NextRequest) {
         return NextResponse.next();
     }
 
-    const publicPaths = ["/account", "/account/signup", "/post", "/favicon.ico"];
+    const publicPaths = ["/account", "/api/account/signup", "/api/account/signup/[email]", "/post", "/favicon.ico"];
     if (publicPaths.some((path) => pathname.startsWith(path))) {
         return NextResponse.next();
     }

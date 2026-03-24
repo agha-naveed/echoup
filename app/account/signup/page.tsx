@@ -4,34 +4,16 @@ import Image from "next/image"
 import Link from "next/link";
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
+
+import { signUpFormSchema, type SignUpFormValues } from "@/schema/user";
+
 import { GoMail } from "react-icons/go";
 import { LuLockKeyhole } from "react-icons/lu";
 import { ChangeEvent, useEffect, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { redirect } from "next/navigation";
 import GoogleIcon from "public/icons/google.svg"
 import { BsCameraFill } from "react-icons/bs";
-import { signUpFormSchema, type SignUpFormValues } from "@/schema/user";
-
-const signUpSchema = z.object({
-    firstName: z.string().min(1, "* First name is required"),
-    lastName: z.string().optional(),
-    date: z.string(),
-    month: z.string(),
-    year: z.string(),
-    gender: z.enum(["male", "female"], {
-        message: "* Gender is required"
-    }),
-    email: z.string().min(1, "* Email is required").email("* Invalid email address"),
-    password: z.string().min(6, "* Password must be at least 6 characters"),
-    profileImage: z.any().optional(),
-    username: z.string()
-        .min(3, "* Username must be at least 3 characters")
-        .regex(/^[a-zA-Z0-9_]+$/, "Only letters, numbers, and underscores"),
-});
-
-type FormValues = z.infer<typeof signUpSchema>;
+import axios from "axios";
 
 export default function Page() {
     const [isLoad, setIsLoad] = useState(false);
@@ -40,6 +22,8 @@ export default function Page() {
     const [step, setStep] = useState(1);
     const [preview, setPreview] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
+
+    const { data: session, status } = useSession();
 
     const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
         const selectedFile = e.target.files?.[0];
@@ -55,13 +39,6 @@ export default function Page() {
         return () => URL.revokeObjectURL(objectUrl);
     }, [file]);
 
-    const { data: session } = useSession();
-    useEffect(() => {
-        if (session) {
-            redirect("/")
-        }
-    }, [session])
-
     useEffect(() => {
         setIsLoad(true)
     }, []);
@@ -72,39 +49,54 @@ export default function Page() {
         trigger,
         getValues,
         setError,
+        setValue,
         formState: { errors },
-    } = useForm<FormValues>({
-        resolver: zodResolver(signUpSchema),
+    } = useForm<SignUpFormValues>({
+        resolver: zodResolver(signUpFormSchema),
         mode: "onChange",
     })
+
+    useEffect(() => {
+        if (status === "authenticated" && session?.user) {
+
+            const nameParts = session.user.name?.split(" ") || [];
+            const firstName = nameParts[0] || "";
+            const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+
+            setValue("firstName", firstName);
+            setValue("lastName", lastName);
+            if (session.user.email) {
+                setValue("email", session.user.email);
+            }
+
+            setSelectedOption("google");
+            setStep(2);
+        }
+    }, [session, status, setValue]);
+
 
     const handleNextStep = async () => {
         const isStep1Valid = await trigger(["firstName", "email", "password", "gender"]);
 
         if (isStep1Valid) {
             setIsProcessing(true);
-            console.log(getValues(["email", "firstName"]))
 
-            // try {
-            //     const response = await fetch('/api/check-email', {
-            //         method: 'POST',
-            //         headers: { 'Content-Type': 'application/json' },
-            //         body: JSON.stringify({ email: getValues("email") })
-            //     });
+            try {
+                const response = await axios.get(`/api/account/signup/${getValues("email")}`)
 
-            //     const data = await response.json();
+                const data = await response.data;
 
-            //     if (data.exists) {
-            //         setError("email", { type: "manual", message: "This email is already registered." });
-            //     } else {
-            //         setStep(2);
-            //     }
-            // } catch (error) {
-            //     console.error("Failed to check email:", error);
-            setStep(2);
-            // } finally {
-            setIsProcessing(false);
-            // }
+                if (data.exists) {
+                    setError("email", { type: "manual", message: "This email is already registered." });
+                } else {
+                    setStep(2);
+                }
+            } catch (error) {
+                console.error("Failed to check email:", error);
+                setStep(2);
+            } finally {
+                setIsProcessing(false);
+            }
         }
     };
 
@@ -115,15 +107,13 @@ export default function Page() {
 
     const onSubmit = handleSubmit(async (data) => {
         setIsProcessing(true);
-        console.log(data)
+
         try {
-            const userResponse = await fetch('/api/check-username', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: data.username })
+            const userResponse = await axios.post('/api/account/signup', {
+                username: data.username
             });
 
-            const userData = await userResponse.json();
+            const userData = await userResponse.data;
 
             if (userData.exists) {
                 setError("username", { type: "manual", message: "This username is already taken." });
@@ -131,7 +121,13 @@ export default function Page() {
                 return;
             }
 
-            console.log("Final Submission:", { ...data, imageOption: selectedOption, file });
+            const finalProfileImage = selectedOption === "google" ? session?.user?.image : file;
+
+            console.log("Final Submission:", {
+                ...data,
+                imageOption: selectedOption,
+                finalProfileImage
+            });
 
         } catch (error) {
             console.error("Submission error:", error);
@@ -165,22 +161,21 @@ export default function Page() {
                         {/* STEP 1 */}
                         <div className="w-full shrink-0 flex justify-center px-4">
                             <div className="flex flex-col gap-3 w-full items-center">
-                                {session ? (
-                                    <>
-                                        <p>Hello {session.user?.name}</p>
-                                        <button type="button" onClick={() => signOut()}>Logout</button>
-                                    </>
-                                ) : (
+                                {/* Only show Google button if they aren't already authenticated */}
+                                {!session && (
                                     <button type="button" onClick={() => signIn("google")} className="border border-white flex items-center py-[10px] w-full md:w-[550px] justify-center gap-3 rounded-lg cursor-pointer transition-all hover:bg-white hover:text-black" title="Signin with Google">
                                         <Image src={GoogleIcon} width={20} height={20} alt="Google Logo" />
                                         <span>Sign up with Google</span>
                                     </button>
                                 )}
-                                <div className="flex gap-4 my-5 items-center w-full md:w-[550px]">
-                                    <div className="w-full h-px border-t border-t-gray-300"></div>
-                                    <span className="text-[14px] text-gray-300">OR</span>
-                                    <div className="w-full h-px border-t border-t-gray-300"></div>
-                                </div>
+
+                                {!session && (
+                                    <div className="flex gap-4 my-5 items-center w-full md:w-[550px]">
+                                        <div className="w-full h-px border-t border-t-gray-300"></div>
+                                        <span className="text-[14px] text-gray-300">OR</span>
+                                        <div className="w-full h-px border-t border-t-gray-300"></div>
+                                    </div>
+                                )}
 
                                 <div className="shadow-[0px_2px_25px_#8b8b8b1c] bg-dark-clr grid gap-4 md:px-8 md:py-8 px-5 py-6 rounded-xl md:w-[550px] w-full">
                                     <div className="flex items-center gap-3 select-none">
@@ -202,7 +197,6 @@ export default function Page() {
                                     <div className="grid gap-3 mt-2">
                                         <div className="flex lg:flex-row flex-col gap-3">
                                             <div className="relative w-full">
-                                                {/* Notice how clean the register() calls are now! */}
                                                 <input type="text"
                                                     className={`w-full h-full bg-primary md:text-[17px] outline-none border ${errors.firstName ? "border-red-600/80" : "border-white/20"} md:py-3 py-[10px] px-4 rounded-lg`}
                                                     placeholder="First Name"
@@ -289,18 +283,22 @@ export default function Page() {
                                 <h2 className="text-[27px] font-bold mb-8 text-center">Choose Your Profile Picture</h2>
 
                                 <div className="flex flex-col sm:flex-row justify-center gap-10 mb-10">
-                                    <div className="flex flex-col items-center gap-4 w-[152px]">
-                                        <div className={`relative w-32 h-32 rounded-full p-1 transition-all ${selectedOption === "google" ? "bg-main-blue shadow-[0_0_20px_rgba(91,171,247,0.4)]" : "bg-transparent"}`}>
-                                            <img src="https://ntvb.tmsimg.com/assets/assets/487578_v9_bb.jpg?w=360&h=480" alt="Google Profile" className="w-full h-full object-cover rounded-full" />
-                                            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white rounded-full p-1 shadow-md">
-                                                <Image src={GoogleIcon} alt="google" width={20} height={20} />
+                                    {
+                                        session?.user?.image && (
+                                            <div className="flex flex-col items-center gap-4 w-[152px]">
+                                                <div className={`relative w-32 h-32 rounded-full p-1 transition-all ${selectedOption === "google" ? "bg-main-blue shadow-[0_0_20px_rgba(91,171,247,0.4)]" : "bg-transparent"}`}>
+                                                    <Image src={session?.user?.image || ""} alt="Google Profile" className="w-full h-full object-cover rounded-full" />
+                                                    <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white rounded-full p-1 shadow-md">
+                                                        <Image src={GoogleIcon} alt="google" width={20} height={20} />
+                                                    </div>
+                                                </div>
+                                                <p className="text-sm">Use your Google Photo</p>
+                                                <button type="button" onClick={() => setSelectedOption("google")} className={`px-6 py-2 rounded-full text-sm font-medium transition-colors ${selectedOption === "google" ? "bg-main-blue text-white" : "bg-transparent border border-white/20 hover:border-white/50"}`}>
+                                                    Keep this image
+                                                </button>
                                             </div>
-                                        </div>
-                                        <p className="text-sm">Use your Google Photo</p>
-                                        <button type="button" onClick={() => setSelectedOption("google")} className={`px-6 py-2 rounded-full text-sm font-medium transition-colors ${selectedOption === "google" ? "bg-main-blue text-white" : "bg-transparent border border-white/20 hover:border-white/50"}`}>
-                                            Keep this image
-                                        </button>
-                                    </div>
+                                        )
+                                    }
 
                                     <div className="flex flex-col items-center gap-4 w-[152px]">
                                         <label htmlFor="signup-image-upload" className={`relative w-32 h-32 rounded-full transition-all flex items-center overflow-hidden justify-center p-1.25 ${selectedOption === "upload" ? "bg-main-blue shadow-[0_0_20px_rgba(91,171,247,0.4)]" : "bg-transparent"}`}>
@@ -320,9 +318,13 @@ export default function Page() {
                                     <button type="button" onClick={() => setStep(3)} className="w-full md:py-[10px] py-2 bg-main-blue rounded-lg md:text-[17px] font-medium cursor-pointer transition-all hover:bg-main-dark-blue text-white">
                                         Confirm Image
                                     </button>
-                                    <button type="button" className="text-gray-400 hover:text-white text-sm font-medium transition-colors" onClick={() => setStep(1)}>
-                                        Back to Info
-                                    </button>
+
+                                    {/* Only show the Back button if they DID NOT sign up with Google */}
+                                    {!session && (
+                                        <button type="button" className="text-gray-400 hover:text-white text-sm font-medium transition-colors" onClick={() => setStep(1)}>
+                                            Back to Info
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
