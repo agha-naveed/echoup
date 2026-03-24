@@ -3,6 +3,8 @@ import logo from "@/images/logo.png"
 import Image from "next/image"
 import Link from "next/link";
 import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
 import { GoMail } from "react-icons/go";
 import { LuLockKeyhole } from "react-icons/lu";
 import { ChangeEvent, useEffect, useState } from "react";
@@ -10,19 +12,26 @@ import { signIn, signOut, useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 import GoogleIcon from "public/icons/google.svg"
 import { BsCameraFill } from "react-icons/bs";
+import { signUpFormSchema, type SignUpFormValues } from "@/schema/user";
 
-type FormValues = {
-    firstName: string;
-    lastName: string;
-    gender: "male" | "female";
-    date: string;
-    month: string;
-    year: string;
-    email: string;
-    password: string;
-    profileImage: FileList;
-    username: string;
-}
+const signUpSchema = z.object({
+    firstName: z.string().min(1, "* First name is required"),
+    lastName: z.string().optional(),
+    date: z.string(),
+    month: z.string(),
+    year: z.string(),
+    gender: z.enum(["male", "female"], {
+        message: "* Gender is required"
+    }),
+    email: z.string().min(1, "* Email is required").email("* Invalid email address"),
+    password: z.string().min(6, "* Password must be at least 6 characters"),
+    profileImage: z.any().optional(),
+    username: z.string()
+        .min(3, "* Username must be at least 3 characters")
+        .regex(/^[a-zA-Z0-9_]+$/, "Only letters, numbers, and underscores"),
+});
+
+type FormValues = z.infer<typeof signUpSchema>;
 
 export default function Page() {
     const [isLoad, setIsLoad] = useState(false);
@@ -61,77 +70,118 @@ export default function Page() {
         register,
         handleSubmit,
         trigger,
+        getValues,
+        setError,
         formState: { errors },
-    } = useForm<FormValues>()
+    } = useForm<FormValues>({
+        resolver: zodResolver(signUpSchema),
+        mode: "onChange",
+    })
 
     const handleNextStep = async () => {
-        const isStep1Valid = await trigger(["firstName", "email", "password"]);
+        const isStep1Valid = await trigger(["firstName", "email", "password", "gender"]);
+
         if (isStep1Valid) {
             setIsProcessing(true);
-            setTimeout(() => {
-                setIsProcessing(false);
-                setStep(2);
-            }, 800);
+            console.log(getValues(["email", "firstName"]))
+
+            // try {
+            //     const response = await fetch('/api/check-email', {
+            //         method: 'POST',
+            //         headers: { 'Content-Type': 'application/json' },
+            //         body: JSON.stringify({ email: getValues("email") })
+            //     });
+
+            //     const data = await response.json();
+
+            //     if (data.exists) {
+            //         setError("email", { type: "manual", message: "This email is already registered." });
+            //     } else {
+            //         setStep(2);
+            //     }
+            // } catch (error) {
+            //     console.error("Failed to check email:", error);
+            setStep(2);
+            // } finally {
+            setIsProcessing(false);
+            // }
         }
     };
 
     const monthsShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const startYear = 1950;
     const currentYear = new Date().getFullYear();
-    const years = Array.from(
-        { length: currentYear - startYear + 1 },
-        (_, i) => currentYear - i
-    );
+    const years = Array.from({ length: currentYear - startYear + 1 }, (_, i) => currentYear - i);
 
-    const onSubmit = handleSubmit((data) => {
-        console.log("Final Submission:", { ...data, imageOption: selectedOption, file });
+    const onSubmit = handleSubmit(async (data) => {
+        setIsProcessing(true);
+        console.log(data)
+        try {
+            const userResponse = await fetch('/api/check-username', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: data.username })
+            });
+
+            const userData = await userResponse.json();
+
+            if (userData.exists) {
+                setError("username", { type: "manual", message: "This username is already taken." });
+                setIsProcessing(false);
+                return;
+            }
+
+            console.log("Final Submission:", { ...data, imageOption: selectedOption, file });
+
+        } catch (error) {
+            console.error("Submission error:", error);
+        } finally {
+            setIsProcessing(false);
+        }
     })
 
     return (
         <div className="container mx-auto h-full p-5 overflow-hidden">
             <div className={`flex flex-col items-center gap-5 transition-slow ${isLoad ? "translate-y-0 opacity-100" : "translate-y-7 opacity-0"}`}>
 
-                <div className="flex md:flex-row flex-col items-center gap-6">
-                    <div className="md:w-[100px] w-[120px]">
+                <div className="flex md:flex-row flex-col items-center gap-6 mb-5">
+                    <div className="md:w-[80px] w-[100px]">
                         <Image src={logo} placeholder="empty" priority={false} width={200} height={200} alt="logo" className="w-full" />
                     </div>
                     <div className="grid items-center gap-1">
-                        <h3 className="text-3xl md:block hidden font-medium">Echo Up</h3>
-                        <span className="w-[300px] block md:text-[16px] text-xl md:text-start text-center">Echo Up, where your voice matters.
+                        <h3 className="text-[26px] md:block hidden font-medium">Echo Up</h3>
+                        <span className="block md:text-[15px] text-xl md:text-start text-center">Echo Up, where your voice matters.
                             <br />Speak, share, and connect.</span>
                     </div>
                 </div>
 
                 <div className="w-full overflow-hidden max-w-3xl pb-10">
-
                     <form
                         onSubmit={onSubmit}
                         className="flex items-start transition-transform duration-500 ease-in-out w-full"
                         style={{ transform: `translateX(-${(step - 1) * 100}%)` }}
                     >
 
+                        {/* STEP 1 */}
                         <div className="w-full shrink-0 flex justify-center px-4">
                             <div className="flex flex-col gap-3 w-full items-center">
-                                {
-                                    session ? (
-                                        <>
-                                            <p>Hello {session.user?.name}</p>
-                                            <button type="button" onClick={() => signOut()}>Logout</button>
-                                        </>
-                                    ) : (
-                                        <button type="button" onClick={() => signIn("google")} className="border border-white flex items-center py-[10px] w-full md:w-[550px] justify-center gap-3 rounded-lg cursor-pointer transition-all hover:bg-white hover:text-black" title="Signin with Google">
-                                            <Image src={GoogleIcon} width={20} height={20} alt="Google Logo" />
-                                            <span>Sign up with Google</span>
-                                        </button>
-                                    )
-                                }
+                                {session ? (
+                                    <>
+                                        <p>Hello {session.user?.name}</p>
+                                        <button type="button" onClick={() => signOut()}>Logout</button>
+                                    </>
+                                ) : (
+                                    <button type="button" onClick={() => signIn("google")} className="border border-white flex items-center py-[10px] w-full md:w-[550px] justify-center gap-3 rounded-lg cursor-pointer transition-all hover:bg-white hover:text-black" title="Signin with Google">
+                                        <Image src={GoogleIcon} width={20} height={20} alt="Google Logo" />
+                                        <span>Sign up with Google</span>
+                                    </button>
+                                )}
                                 <div className="flex gap-4 my-5 items-center w-full md:w-[550px]">
                                     <div className="w-full h-px border-t border-t-gray-300"></div>
                                     <span className="text-[14px] text-gray-300">OR</span>
                                     <div className="w-full h-px border-t border-t-gray-300"></div>
                                 </div>
 
-                                {/* RESTORED YOUR EXACT FORM CLASSES HERE */}
                                 <div className="shadow-[0px_2px_25px_#8b8b8b1c] bg-dark-clr grid gap-4 md:px-8 md:py-8 px-5 py-6 rounded-xl md:w-[550px] w-full">
                                     <div className="flex items-center gap-3 select-none">
                                         <Image src={logo} alt="logo" className="md:w-[35px] w-[30px]" />
@@ -152,10 +202,11 @@ export default function Page() {
                                     <div className="grid gap-3 mt-2">
                                         <div className="flex lg:flex-row flex-col gap-3">
                                             <div className="relative w-full">
+                                                {/* Notice how clean the register() calls are now! */}
                                                 <input type="text"
-                                                    className={`w-full h-full bg-primary md:text-[17px] outline-none border ${errors.firstName?.message?.includes("First name") ? "border-red-600/80" : "border-white/20"} md:py-3 py-[10px] px-4 rounded-lg`}
+                                                    className={`w-full h-full bg-primary md:text-[17px] outline-none border ${errors.firstName ? "border-red-600/80" : "border-white/20"} md:py-3 py-[10px] px-4 rounded-lg`}
                                                     placeholder="First Name"
-                                                    {...register("firstName", { required: "* First name is required" })} />
+                                                    {...register("firstName")} />
                                             </div>
                                             <div className="relative w-full">
                                                 <input type="text"
@@ -166,7 +217,7 @@ export default function Page() {
                                         </div>
 
                                         <div className="grid w-full">
-                                            <label htmlFor="" className="text-[15px] mb-[6px]">Date of Birth</label>
+                                            <label className="text-[15px] mb-[6px]">Date of Birth</label>
                                             <div className="flex gap-4 justify-between w-full">
                                                 <select className="w-full h-full bg-primary border border-white/20 md:py-[10px] py-2 px-4 rounded-lg" {...register("date")}>
                                                     {Array.from({ length: 31 }, (_, i) => (<option key={`birthDate-${i}`} value={i + 1}>{i + 1}</option>))}
@@ -181,31 +232,38 @@ export default function Page() {
                                         </div>
 
                                         <div className="relative my-1">
-                                            <label htmlFor="" className="text-[15px] mb-[6px]">Gender</label>
+                                            <label className="text-[15px] mb-[6px]">Gender</label>
                                             <div className="flex gap-3">
-                                                <label htmlFor="gender-male-input" className="flex items-center gap-2 cursor-pointer md:text-xl text-[18px]">
-                                                    Male <input type="radio" id="gender-male-input" value={"male"} {...register("gender", { required: "* Gender is required" })} />
+                                                <label className="flex items-center gap-2 cursor-pointer md:text-xl text-[18px]">
+                                                    Male <input type="radio" value="male" {...register("gender")} />
                                                 </label>
-                                                <label htmlFor="gender-female-input" className="flex items-center gap-2 cursor-pointer md:text-xl text-[18px]">
-                                                    Female <input type="radio" id="gender-female-input" value={"female"} {...register("gender")} />
+                                                <label className="flex items-center gap-2 cursor-pointer md:text-xl text-[18px]">
+                                                    Female <input type="radio" value="female" {...register("gender")} />
                                                 </label>
                                             </div>
-                                            {errors.gender && (<p className="text-red-600/80 text-[14px]">{errors.gender.message}</p>)}
+                                            {errors.gender && (<p className="text-red-600/80 text-[14px] mt-1">{errors.gender.message}</p>)}
                                         </div>
 
-                                        <div className="relative">
-                                            <GoMail className="absolute md:top-[16px] top-[13px] left-[16px] text-[18px]" />
-                                            <input type="email"
-                                                className={`w-full h-full bg-primary text-[17px] outline-none border md:py-3 py-[10px] pl-11 pr-4 rounded-lg ${errors.email?.message?.includes("Email") ? "border-red-600/80" : "border-white/20"}`}
-                                                placeholder="Email"
-                                                {...register("email", { required: "* Email is Required" })} />
+                                        <div>
+                                            <div className="relative">
+                                                <GoMail className="absolute md:top-[16px] top-[13px] left-[16px] text-[18px]" />
+                                                <input type="email"
+                                                    className={`w-full h-full bg-primary text-[17px] outline-none border md:py-3 py-[10px] pl-11 pr-4 rounded-lg ${errors.email ? "border-red-600/80" : "border-white/20"}`}
+                                                    placeholder="Email"
+                                                    {...register("email")} />
+                                            </div>
+                                            {errors.email && <p className="text-red-600/80 text-[14px] mt-1">{errors.email.message}</p>}
                                         </div>
-                                        <div className="relative">
-                                            <LuLockKeyhole className="absolute md:top-[16px] top-[13px] left-[16px] text-[18px]" />
-                                            <input type="password"
-                                                className={`w-full h-full bg-primary text-[17px] outline-none border md:py-3 py-[10px] pl-11 pr-4 rounded-lg ${errors.password?.message?.includes("password") ? "border-red-600/80" : "border-white/20"}`}
-                                                placeholder="Password"
-                                                {...register("password", { required: "password" })} />
+
+                                        <div>
+                                            <div className="relative">
+                                                <LuLockKeyhole className="absolute md:top-[16px] top-[13px] left-[16px] text-[18px]" />
+                                                <input type="password"
+                                                    className={`w-full h-full bg-primary text-[17px] outline-none border md:py-3 py-[10px] pl-11 pr-4 rounded-lg ${errors.password ? "border-red-600/80" : "border-white/20"}`}
+                                                    placeholder="Password"
+                                                    {...register("password")} />
+                                            </div>
+                                            {errors.password && <p className="text-red-600/80 text-[14px] mt-1">{errors.password.message}</p>}
                                         </div>
                                     </div>
 
@@ -225,12 +283,13 @@ export default function Page() {
                             </div>
                         </div>
 
+                        {/* STEP 2 */}
                         <div className="w-full shrink-0 flex justify-center px-4">
                             <div className="shadow-[0px_2px_25px_#8b8b8b1c] bg-dark-clr grid w-full p-8 rounded-xl md:w-[550px]">
                                 <h2 className="text-[27px] font-bold mb-8 text-center">Choose Your Profile Picture</h2>
 
                                 <div className="flex flex-col sm:flex-row justify-center gap-10 mb-10">
-                                    <div className="flex flex-col items-center gap-4">
+                                    <div className="flex flex-col items-center gap-4 w-[152px]">
                                         <div className={`relative w-32 h-32 rounded-full p-1 transition-all ${selectedOption === "google" ? "bg-main-blue shadow-[0_0_20px_rgba(91,171,247,0.4)]" : "bg-transparent"}`}>
                                             <img src="https://ntvb.tmsimg.com/assets/assets/487578_v9_bb.jpg?w=360&h=480" alt="Google Profile" className="w-full h-full object-cover rounded-full" />
                                             <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white rounded-full p-1 shadow-md">
@@ -243,7 +302,7 @@ export default function Page() {
                                         </button>
                                     </div>
 
-                                    <div className="flex flex-col items-center gap-4">
+                                    <div className="flex flex-col items-center gap-4 w-[152px]">
                                         <label htmlFor="signup-image-upload" className={`relative w-32 h-32 rounded-full transition-all flex items-center overflow-hidden justify-center p-1.25 ${selectedOption === "upload" ? "bg-main-blue shadow-[0_0_20px_rgba(91,171,247,0.4)]" : "bg-transparent"}`}>
                                             <div className="w-full h-full bg-primary rounded-full flex items-center justify-center object-cover cursor-pointer border border-white/20" title="Upload an Image">
                                                 {preview ? (<Image src={preview} alt="Preview" width={100} height={100} className="w-full h-full rounded-full object-cover" />) : (<BsCameraFill size={40} className="text-gray-400" />)}
@@ -268,6 +327,7 @@ export default function Page() {
                             </div>
                         </div>
 
+                        {/* STEP 3 */}
                         <div className="w-full shrink-0 flex justify-center px-4">
                             <div className="shadow-[0px_2px_25px_#8b8b8b1c] bg-dark-clr grid w-full p-8 rounded-xl md:w-[550px]">
                                 <div className="text-center mb-6">
@@ -281,17 +341,18 @@ export default function Page() {
                                         type="text"
                                         placeholder="username"
                                         className={`w-full h-full bg-primary md:text-[17px] outline-none border ${errors.username ? "border-red-600/80" : "border-white/20"} md:py-3 py-[10px] pl-10 pr-4 rounded-lg`}
-                                        {...register("username", {
-                                            required: "* Username is required",
-                                            pattern: { value: /^[a-zA-Z0-9_]+$/, message: "Only letters, numbers, and underscores" }
-                                        })}
+                                        {...register("username")}
                                     />
                                     {errors.username && <p className="text-red-600/80 text-[14px] mt-2">{errors.username.message}</p>}
                                 </div>
 
                                 <div className="flex flex-col items-center gap-4">
-                                    <button type="submit" className="w-full md:py-[10px] py-2 bg-main-blue rounded-lg md:text-[17px] font-medium cursor-pointer transition-all hover:bg-main-dark-blue text-white">
-                                        Complete Sign Up
+                                    <button
+                                        type="submit"
+                                        disabled={isProcessing}
+                                        className="w-full flex justify-center items-center md:py-[10px] py-2 bg-main-blue rounded-lg md:text-[17px] font-medium cursor-pointer transition-all hover:bg-main-dark-blue disabled:opacity-70 disabled:cursor-not-allowed text-white"
+                                    >
+                                        {isProcessing ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : "Complete Sign Up"}
                                     </button>
                                     <button type="button" className="text-gray-400 hover:text-white text-sm font-medium transition-colors" onClick={() => setStep(2)}>
                                         Back to Picture
