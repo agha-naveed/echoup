@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import db from "@/lib/db"
 import { users } from "@/schema/user"
 import { eq } from "drizzle-orm";
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ email: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ email: string }> }) {
     const { email } = await params;
 
     try {

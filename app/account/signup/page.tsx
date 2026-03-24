@@ -4,7 +4,7 @@ import Image from "next/image"
 import Link from "next/link";
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-
+import { CldImage } from 'next-cloudinary';
 import { signUpFormSchema, type SignUpFormValues } from "@/schema/user";
 
 import { GoMail } from "react-icons/go";
@@ -22,6 +22,7 @@ export default function Page() {
     const [step, setStep] = useState(1);
     const [preview, setPreview] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
 
     const { data: session, status } = useSession();
 
@@ -107,12 +108,24 @@ export default function Page() {
 
     const onSubmit = handleSubmit(async (data) => {
         setIsProcessing(true);
-
+        const formattedDate = `${data.year}-${data.month.padStart(2, '0')}-${data.date.padStart(2, '0')}`;
         try {
-            const userResponse = await axios.post('/api/account/signup', {
-                username: data.username
-            });
-
+            const userResponse = await axios.get(`/api/account/signup/?username=${data.username}`);
+            if (userResponse.status == 200) {
+                if (selectedOption == "upload" && file) {
+                    const formData = new FormData();
+                    formData.append("file", file);
+                    formData.append("upload_preset", "echo_up_profiles");
+                }
+                if (selectedOption === "google") {
+                    const addData = await axios.post("/api/account/signup", {
+                        ...data, profileImage: session?.user?.image, dateOfBirth: formattedDate
+                    })
+                }
+                else {
+                    const addData = await axios.post("/api/account/signup", data)
+                }
+            }
             const userData = await userResponse.data;
 
             if (userData.exists) {
@@ -161,7 +174,6 @@ export default function Page() {
                         {/* STEP 1 */}
                         <div className="w-full shrink-0 flex justify-center px-4">
                             <div className="flex flex-col gap-3 w-full items-center">
-                                {/* Only show Google button if they aren't already authenticated */}
                                 {!session && (
                                     <button type="button" onClick={() => signIn("google")} className="border border-white flex items-center py-[10px] w-full md:w-[550px] justify-center gap-3 rounded-lg cursor-pointer transition-all hover:bg-white hover:text-black" title="Signin with Google">
                                         <Image src={GoogleIcon} width={20} height={20} alt="Google Logo" />
@@ -287,7 +299,7 @@ export default function Page() {
                                         session?.user?.image && (
                                             <div className="flex flex-col items-center gap-4 w-[152px]">
                                                 <div className={`relative w-32 h-32 rounded-full p-1 transition-all ${selectedOption === "google" ? "bg-main-blue shadow-[0_0_20px_rgba(91,171,247,0.4)]" : "bg-transparent"}`}>
-                                                    <Image src={session?.user?.image || ""} alt="Google Profile" className="w-full h-full object-cover rounded-full" />
+                                                    <Image src={session?.user?.image || ""} alt="Google Profile" className="w-full h-full object-cover rounded-full" width={100} height={100} />
                                                     <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white rounded-full p-1 shadow-md">
                                                         <Image src={GoogleIcon} alt="google" width={20} height={20} />
                                                     </div>
