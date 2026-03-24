@@ -7,7 +7,6 @@ import redis from "@/lib/redis";
 
 export async function POST(req: NextRequest) {
     try {
-        // 1. Authenticate the User
         const session = await getServerSession(authOptions);
         if (!session?.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -40,7 +39,7 @@ export async function POST(req: NextRequest) {
         const newPost = await db.insert(posts).values({
             content: body.content,
             authorId: userId,
-            // imageUrl: body.imageUrl
+            imageUrl: body.imageUrl
         }).returning({ id: posts.id });
 
         return NextResponse.json({ success: true, postId: newPost[0].id });

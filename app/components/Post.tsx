@@ -11,17 +11,21 @@ type Props = {
 }
 
 export default function Post({ post }: Props) {
+    console.log(post)
     return (
         <div className='bg-primary rounded-2xl w-full h-fit border border-main-border shadow-lg'>
             <div className='flex items-center justify-between px-5 py-4'>
                 <div className='flex items-center gap-3'>
                     <div className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden">
-                        <Image src={post.author?.avatar || ""} alt="..." width={100} height={100} className="w-full h-full object-cover" />
+                        {
+                            post.author?.profileImage &&
+                            <Image src={post?.author?.profileImage || ""} alt="..." width={100} height={100} className="w-full h-full object-cover" />
+                        }
                     </div>
 
                     <div className='text-foreground flex flex-col'>
-                        <h4 className='font-medium text-[17px]'>{post.author?.name}</h4>
-                        <span className='text-[11px] text-foreground/70'>{post.createdAt}</span>
+                        <h4 className='font-medium text-[17px]'>{post.author?.firstName} {post.author?.lastName}</h4>
+                        <span className='text-[11px] text-foreground/70'>{new Date(post.createdAt).toLocaleString()}</span>
                     </div>
                 </div>
                 <HiOutlineDotsHorizontal className='text-[22px] p-[6px] cursor-pointer w-[35px] h-[35px] transition-all hover:bg-dark-clr rounded-full text-foreground' />
@@ -29,16 +33,16 @@ export default function Post({ post }: Props) {
 
             <Link href={"/post/asd"} className='grid gap-3 overflow-hidden max-h-[350px]'>
                 {
-                    post.content.text && <h4 className='text-white text-[17px] px-5'>{post.content.text}</h4>
+                    post.content && <h4 className='text-white text-[17px] px-5'>{post?.content}</h4>
                 }
-                {
-                    post.content.image &&
+                {/* {
+                    post.content?.image &&
                     <Image src={post.content.image || ""} className='w-full max-h-full' alt='' width={1000} height={1000} />
-                }
+                } */}
             </Link>
 
             <div className='px-3 py-4 flex items-center gap-[2px] text-foreground'>
-                
+
                 <button className='flex items-center gap-2 md:text-[19px] text-[16px] group cursor-pointer transition-all hover:bg-dark-clr/50 md:px-[16px] px-[13px] py-[5px] rounded-full' title='Like this post'>
                     <GoHeart className='group-hover:hidden block' />
                     <GoHeartFill className='group-hover:block hidden' />

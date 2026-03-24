@@ -2,6 +2,7 @@ import React from 'react'
 import Navbar from '../Navbar';
 import SideNavbar from '../SideNavbar';
 import ActivitySidebar from "../ActivitySidebar";
+import AuthProvider from '../AuthProvider';
 
 
 export default function MainWrapper({
@@ -10,9 +11,10 @@ export default function MainWrapper({
   children: React.ReactNode;
 }>) {
 
-    return (
-        <>
-        <div>
+  return (
+    <>
+      <div>
+        <AuthProvider>
           <Navbar />
           <div className='flex justify-between'>
             <SideNavbar />
@@ -23,7 +25,8 @@ export default function MainWrapper({
             </div>
             <ActivitySidebar />
           </div>
-        </div>
-      </>
-    )
+        </AuthProvider>
+      </div>
+    </>
+  )
 }
