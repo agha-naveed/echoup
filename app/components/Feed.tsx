@@ -1,30 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import CreatePost from "../components/CreatePost";
+// Removed CreatePost import since it's already rendered in page.tsx
 import Post from "../components/Post";
-import PostSkeleton from "../components/skeleton/PostSkeleton";
 
-export default function FeedPage() {
-  const [posts, setPosts] = useState<any[]>([]);
+// Tell TypeScript to expect the initialPosts prop
+export default function FeedPage({ initialPosts }: { initialPosts: any[] }) {
+  // 1. Initialize your state WITH the server data
+  const [posts, setPosts] = useState<any[]>(initialPosts);
   const [newPosts, setNewPosts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  // Fetch initial posts
-  
-  useEffect(() => {
-    const fetchPosts = async () => {
-      setLoading(true);
-      const res = await fetch("/api/demo", { cache: "no-store" });
-      const data = await res.json();
-      setPosts(data);
-      setLoading(false);
-    };
-
-    fetchPosts();
-  }, []);
-
-  // Poll for new posts in the background
+  // 2. KEEP your awesome polling logic!
+  // This will check for brand new posts while the user is staring at the screen.
   // useEffect(() => {
   //   const interval = setInterval(async () => {
   //     if (posts.length === 0) return;
@@ -41,19 +28,18 @@ export default function FeedPage() {
   //   return () => clearInterval(interval);
   // }, [posts]);
 
-
   const handleShowNewPosts = () => {
     setPosts((prev) => [...newPosts, ...prev]);
     setNewPosts([]);
   };
 
   return (
-    <div className="w-full flex flex-col gap-5 min-h-screen">
-        
-      {/* New Posts Banner */}
+    <div className="w-full flex flex-col gap-5 min-h-screen relative">
+
+      {/* New Posts Banner (This is a great feature!) */}
       {newPosts.length > 0 && (
         <div
-          className="fixed top-4 left-1/2 -translate-x-1/2 bg-blue-500 text-white px-4 py-2 rounded-lg cursor-pointer shadow-lg z-50"
+          className="absolute top-4 left-1/2 -translate-x-1/2 bg-main-blue text-white px-4 py-2 rounded-full cursor-pointer shadow-[0_0_15px_rgba(91,171,247,0.4)] z-50 text-sm font-medium transition-all hover:-translate-y-1"
           onClick={handleShowNewPosts}
         >
           {newPosts.length} new post{newPosts.length > 1 ? "s" : ""}
@@ -61,14 +47,13 @@ export default function FeedPage() {
       )}
 
       {/* Feed */}
-      {loading ? (
-        <>
-          <PostSkeleton variant="text" />
-          <PostSkeleton variant="text-image" />
-        </>
+      {/* No loading skeletons needed! It paints instantly. */}
+      {posts.length === 0 ? (
+        <div className="text-center text-gray-500 mt-10">No posts yet!</div>
       ) : (
         posts.map((post) => <Post key={post.id} post={post} />)
       )}
+
     </div>
   );
 }
