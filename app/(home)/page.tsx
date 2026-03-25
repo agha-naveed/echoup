@@ -13,6 +13,7 @@ export default async function page() {
       id: true,
       content: true,
       createdAt: true,
+      imageUrl: true
     },
 
     with: {

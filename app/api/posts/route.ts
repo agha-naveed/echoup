@@ -32,14 +32,14 @@ export async function POST(req: NextRequest) {
 
         const body = await req.json();
 
-        if (!body.content || body.content.trim() === "") {
+        if ((!body.content || body.content.trim() === "") && !body.imageUrls) {
             return NextResponse.json({ error: "Content is required" }, { status: 400 });
         }
 
         const newPost = await db.insert(posts).values({
             content: body.content,
             authorId: userId,
-            imageUrl: body.imageUrl
+            imageUrl: body.imageUrls
         }).returning({ id: posts.id });
 
         return NextResponse.json({ success: true, postId: newPost[0].id });
