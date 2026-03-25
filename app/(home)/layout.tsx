@@ -28,7 +28,7 @@ export default function RootLayout(props: Readonly<{
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <MainWrapper>
-          <div className="md:w-fit w-full flex justify-center">
+          <div className="xl:w-[600px] lg:w-full md:w-[600px] w-full flex justify-center">
             {props.children}
             {props.modal}
           </div>

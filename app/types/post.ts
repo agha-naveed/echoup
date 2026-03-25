@@ -3,13 +3,11 @@ export type PostType = {
     author: {
         firstName: string;
         lastName: string;
+        username: string;
         profileImage: string;
     };
-    // content: {
-    //     text?: string;
-    //     image?: string;
-    // };
     content: string;
+    imageUrl: string;
     createdAt: string;
     likes: number;
     comments: number;

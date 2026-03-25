@@ -29,14 +29,14 @@ export default function PostOpen() {
         getData()
     }, [])
 
-    
-    const handleInput = (e:any) => {
+
+    const handleInput = (e: any) => {
         const text = e.currentTarget.textContent.trim();
         setIsEmpty(!text);
     };
 
     useEffect(() => {
-        const handleClickOutside = (event:MouseEvent) => {
+        const handleClickOutside = (event: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
                 setIsOpen(false);
             }
@@ -55,13 +55,13 @@ export default function PostOpen() {
                     <div className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden">
                         {
                             post?.author ?
-                            <Image src={post?.author?.avatar} alt="..." width={100} height={100} className="w-full h-full object-cover" />
-                            : null
+                                <Image src={post?.author?.profileImage} alt="..." width={100} height={100} className="w-full h-full object-cover" />
+                                : null
                         }
                     </div>
 
                     <div className='text-foreground flex flex-col'>
-                        <h4 className='font-medium text-[17px]'>{post?.author?.name}</h4>
+                        <h4 className='font-medium text-[17px]'>{post?.author?.firstName} {post?.author?.lastName}</h4>
                         <span className='text-[11px] text-foreground/70'>{post?.createdAt}</span>
                     </div>
                 </div>
@@ -70,18 +70,18 @@ export default function PostOpen() {
 
             <div className='grid gap-3 overflow-hidden max-h-87.5'>
                 {
-                    post?.content.text && <h4 className='text-white text-[17px] px-5'>{post?.content.text}</h4>
+                    post?.content && <h4 className='text-white text-[17px] px-5'>{post?.content}</h4>
                 }
                 {
-                    post?.content.image &&
+                    post?.imageUrl &&
                     <div className=''>
-                        <Image src={post?.content.image || ""} className='w-full max-h-full cursor-pointer' alt='' width={1000} height={1000} />
+                        <Image src={post?.imageUrl || ""} className='w-full max-h-full cursor-pointer' alt='' width={1000} height={1000} />
                     </div>
                 }
             </div>
 
             <div className='px-3 mt-4 flex items-center gap-0.5 text-foreground'>
-                
+
                 <button className='flex items-center gap-2 md:text-[19px] text-[16px] group cursor-pointer transition-all hover:bg-dark-clr/50 md:px-4 px-3.25 py-1.25 rounded-full' title='Like this post'>
                     <GoHeart className='group-hover:hidden block' />
                     <GoHeartFill className='group-hover:block hidden' />
@@ -119,8 +119,8 @@ export default function PostOpen() {
                     <Link href={""} className='min-w-10 h-10 rounded-full overflow-hidden'>
                         {
                             post?.author ?
-                            <Image src={post?.author?.avatar} alt="..." width={100} height={100} className="w-full h-full object-cover" />
-                            : null
+                                <Image src={post?.author?.profileImage} alt="..." width={100} height={100} className="w-full h-full object-cover" />
+                                : null
                         }
                     </Link>
                     <div className='grid gap-1 text-foreground text-[15px] bg-dark-clr/40 rounded-[10px] py-1.5 px-2.5'>
@@ -132,8 +132,8 @@ export default function PostOpen() {
                     <Link href={""} className='min-w-10 h-10 rounded-full overflow-hidden'>
                         {
                             post?.author ?
-                            <Image src={post?.author?.avatar} alt="..." width={100} height={100} className="w-full h-full object-cover" />
-                            : null
+                                <Image src={post?.author?.profileImage} alt="..." width={100} height={100} className="w-full h-full object-cover" />
+                                : null
                         }
                     </Link>
                     <div className='grid gap-1 text-foreground text-[15px] bg-dark-clr/40 rounded-[10px] py-1.5 px-2.5'>
@@ -145,8 +145,8 @@ export default function PostOpen() {
                     <Link href={""} className='min-w-10 h-10 rounded-full overflow-hidden'>
                         {
                             post?.author ?
-                            <Image src={post?.author?.avatar} alt="..." width={100} height={100} className="w-full h-full object-cover" />
-                            : null
+                                <Image src={post?.author?.profileImage} alt="..." width={100} height={100} className="w-full h-full object-cover" />
+                                : null
                         }
                     </Link>
                     <div className='grid gap-1 text-foreground text-[15px] bg-dark-clr/40 rounded-[10px] py-1.5 px-2.5'>
@@ -159,31 +159,31 @@ export default function PostOpen() {
                     <Link href={""} className='min-w-10 h-10 rounded-full overflow-hidden'>
                         {
                             post?.author ?
-                            <Image src={post?.author?.avatar} alt="DP" width={100} height={100} className="w-full h-full object-cover" />
-                            : null
+                                <Image src={post?.author?.profileImage} alt="DP" width={100} height={100} className="w-full h-full object-cover" />
+                                : null
                         }
                     </Link>
                     <div className='grid gap-1 text-foreground text-[15px] bg-dark-clr/40 rounded-[10px] py-1.5 px-2.5 w-full'
-                    onFocus={(e) => {
-                        if (e.currentTarget.contains(e.target)) {
-                        setIsFocus(true);
-                        }
-                    }}
-                    onBlur={(e) => {
-                        if (!e.currentTarget.contains(e.relatedTarget)) {
-                        setIsFocus(false);
-                        }
-                    }}>
+                        onFocus={(e) => {
+                            if (e.currentTarget.contains(e.target)) {
+                                setIsFocus(true);
+                            }
+                        }}
+                        onBlur={(e) => {
+                            if (!e.currentTarget.contains(e.relatedTarget)) {
+                                setIsFocus(false);
+                            }
+                        }}>
                         <div className="select-none overflow-hidden min-w-0 flex-1 group">
                             <div className="flex items-end relative overflow-hidden">
                                 <div
-                                contentEditable
-                                role="textbox"
-                                aria-multiline="true"
-                                aria-label='Commenting as Syed Naveed Abbas'
-                                data-placeholder="Commenting as Syed Naveed Abbas" 
-                                onInput={handleInput}
-                                className={`editable-div ${isEmpty ? "is-empty" : ""} w-full lg:max-h-125 max-h-75 ${isFocus ? "min-h-10" : "min-h-7.25"} overflow-hidden resize-none p-1 pr-9 outline-none
+                                    contentEditable
+                                    role="textbox"
+                                    aria-multiline="true"
+                                    aria-label='Commenting as Syed Naveed Abbas'
+                                    data-placeholder="Commenting as Syed Naveed Abbas"
+                                    onInput={handleInput}
+                                    className={`editable-div ${isEmpty ? "is-empty" : ""} w-full lg:max-h-125 max-h-75 ${isFocus ? "min-h-10" : "min-h-7.25"} overflow-hidden resize-none p-1 pr-9 outline-none
                                 whitespace-pre-wrap wrap-break-words break-all select-text`} />
                                 <button className='hover:bg-main-dark-blue transition-all cursor-pointer absolute right-0 p-1 rounded-full' title='Send Message'>
                                     <RiSendPlaneFill className='text-xl relative left-[-1.5px] top-px' />

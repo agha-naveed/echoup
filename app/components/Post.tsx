@@ -11,21 +11,20 @@ type Props = {
 }
 
 export default function Post({ post }: Props) {
-    console.log(post)
     return (
         <div className='bg-primary rounded-2xl w-full h-fit border border-main-border shadow-lg'>
             <div className='flex items-center justify-between px-5 py-4'>
                 <div className='flex items-center gap-3'>
-                    <div className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden">
+                    <Link href={post.author?.username} className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden">
                         {
                             post.author?.profileImage &&
-                            <Image src={post?.author?.profileImage || ""} alt="..." width={100} height={100} className="w-full h-full object-cover" />
+                            <Image src={post?.author?.profileImage || ""} alt={`${post.author.firstName}'s Posts`} width={100} height={100} className="w-full h-full object-cover" />
                         }
-                    </div>
+                    </Link>
 
                     <div className='text-foreground flex flex-col'>
-                        <h4 className='font-medium text-[17px]'>{post.author?.firstName} {post.author?.lastName}</h4>
-                        <span className='text-[11px] text-foreground/70'>{new Date(post.createdAt).toLocaleString()}</span>
+                        <Link href={post.author?.username} className='font-medium text-[17px]'>{post.author?.firstName} {post.author?.lastName}</Link>
+                        <span className='text-[11px] text-foreground/70'>{post.createdAt.toString().substring(4, 15)}</span>
                     </div>
                 </div>
                 <HiOutlineDotsHorizontal className='text-[22px] p-[6px] cursor-pointer w-[35px] h-[35px] transition-all hover:bg-dark-clr rounded-full text-foreground' />
@@ -35,10 +34,10 @@ export default function Post({ post }: Props) {
                 {
                     post.content && <h4 className='text-white text-[17px] px-5'>{post?.content}</h4>
                 }
-                {/* {
-                    post.content?.image &&
-                    <Image src={post.content.image || ""} className='w-full max-h-full' alt='' width={1000} height={1000} />
-                } */}
+                {
+                    post?.imageUrl &&
+                    <Image src={post?.imageUrl || ""} className='w-full max-h-full' alt='' width={1000} height={1000} />
+                }
             </Link>
 
             <div className='px-3 py-4 flex items-center gap-[2px] text-foreground'>

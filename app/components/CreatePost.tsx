@@ -1,5 +1,5 @@
 "use client"
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { TbPhoto } from "react-icons/tb";
 import { MdOutlineOndemandVideo } from "react-icons/md";
 import { FiFileText } from "react-icons/fi";
@@ -17,14 +17,12 @@ const CreatePost = () => {
     const [isPosting, setIsPosting] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-    // We use a ref to grab the text without causing React to re-render the typing cursor
     const contentRef = useRef<HTMLDivElement>(null);
 
     const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
         const text = e.currentTarget.textContent?.trim() || "";
         setIsEmpty(!text);
 
-        // Clear errors if they start typing again
         if (errorMsg) setErrorMsg(null);
     };
 
@@ -58,9 +56,18 @@ const CreatePost = () => {
     };
 
     return (
-        <div className={`flex flex-col gap-2 px-5 py-3 bg-primary w-full rounded-xl text-foreground/80 border transition-all ${isFocus ? "border-foreground/40 shadow-[0_2px_15px_#a3a3a334]" : "border-main-border"}`} onFocus={() => setIsFocus(true)} onBlur={() => setIsFocus(false)}>
+        <div className={`flex flex-col gap-2 px-5 py-3 bg-primary w-full rounded-xl text-foreground/80 border transition-all ${isFocus ? "border-foreground/40 shadow-[0_2px_15px_#a3a3a334]" : "border-main-border"}`} onFocus={(e: any) => {
+            if (e.currentTarget.contains(e.target)) {
+                setIsFocus(true);
+            }
+        }}
+            onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget)) {
+                    setIsFocus(false);
+                }
+            }}
+        >
 
-            {/* Display Redis Rate Limit Errors */}
             {errorMsg && (
                 <div className="text-red-400 text-sm font-medium px-2 pb-1">
                     {errorMsg}
@@ -68,7 +75,6 @@ const CreatePost = () => {
             )}
 
             <div className="flex gap-3 w-full">
-                {/* Dynamic Avatar */}
                 <div className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden mt-2 border border-main-border">
                     {session?.user?.image ? (
                         <Image
@@ -93,7 +99,7 @@ const CreatePost = () => {
                         role="textbox"
                         aria-multiline="true"
                         data-placeholder="Type Something..."
-                        className={`editable-div post-open overflow-y-auto ${isEmpty ? "is-empty" : ""} min-h-[50px] lg:max-h-[400px] max-h-[300px] focus:min-h-[100px] lg:w-[498px] w-md:[400px] overflow-hidden resize-none p-1 outline-none whitespace-pre-wrap wrap-break-words break-all select-text`}
+                        className={`editable-div post-open overflow-y-auto ${isEmpty ? "is-empty" : ""} lg:max-h-[400px] max-h-[300px] ${isFocus ? "min-h-[100px]" : "min-h-[50px]"} lg:w-full w-md:[400px] overflow-hidden resize-none p-1 outline-none whitespace-pre-wrap wrap-break-words break-all select-text`}
                     ></div>
                 </div>
             </div>
@@ -114,8 +120,7 @@ const CreatePost = () => {
                 <button
                     type="button"
                     onClick={handlePostSubmit}
-                    disabled={isEmpty || isPosting}
-                    className="btn-gradient disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[70px]"
+                    className={`btn-gradient ${isEmpty ? "opacity-50 cursor-not-allowed!" : ""} flex items-center justify-center min-w-[70px]`}
                 >
                     {isPosting ? (
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

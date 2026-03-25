@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
         if (postCount > 3) {
             return NextResponse.json(
                 { error: "You are echoing too fast. Please wait a minute." },
-                { status: 429 } // HTTP 429: Too Many Requests
+                { status: 429 }
             );
         }
 

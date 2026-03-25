@@ -1,21 +1,33 @@
+import db from "@/app/api/lib/db";
 import FeedPage from "@/app/components/Feed";
+import { posts } from "@/db/schema";
+import { desc } from "drizzle-orm";
 import Image from "next/image"
 import Link from "next/link";
 import { GoPlus } from "react-icons/go";
 import { HiOutlineDotsHorizontal } from "react-icons/hi";
 
-const page = () => {
+const page = async () => {
+
+    const initialPosts = await db.query.posts.findMany({
+        orderBy: [desc(posts.createdAt)],
+        limit: 20,
+        with: {
+            author: true
+        }
+    });
+
     return (
         <div className="min-h-screen container mx-auto w-fit max-w-[730px]">
             <div className="relative">
-                <div className="w-full w-[1200px] flex max-w-[1500px] sm:h-[270px] h-[37vw] object-cover rounded-xl overflow-hidden">
+                <div className="w-full flex max-w-[1500px] sm:h-[270px] h-[37vw] object-cover rounded-xl overflow-hidden">
                     <Image src={"https://static.vecteezy.com/system/resources/thumbnails/033/252/051/small/space-for-text-on-textured-background-surrounded-by-a-lion-in-watercolor-style-background-image-ai-generated-photo.jpg"} width={1000} height={1000} alt="Cover Page" className="w-full object-cover" />
                 </div>
                 <div className="absolute sm:max-w-[180px] sm:min-w-[180px] sm:w-[180px] sm:min-h-[180px] sm:max-h-[180px] sm:h-[180px] min-w-[100px] w-[30vmin] min-h-[100px] h-[30vmin] overflow-hidden rounded-full sm:outline-7 outline-4 outline-light-clr -bottom-4 sm:left-12 left-9">
                     <Image src={"https://ntvb.tmsimg.com/assets/assets/487578_v9_bb.jpg?w=360&h=480"} width={360} height={480} alt="DP" className="w-full" />
                 </div>
             </div>
-            
+
             <div className="sm:px-7 pt-5 pb-5 px-3">
                 <div className="flex items-center justify-between">
                     <div className="text-foreground">
@@ -67,7 +79,7 @@ const page = () => {
             </div>
 
             <div className="sm:px-7 px-3 py-3 flex gap-3">
-                <FeedPage />
+                <FeedPage initialPosts={initialPosts} />
                 {/* <div className="p-4 min-w-70 h-50 bg-white">
 
                 </div> */}
