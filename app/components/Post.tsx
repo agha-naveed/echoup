@@ -11,6 +11,7 @@ type Props = {
 }
 
 export default function Post({ post }: Props) {
+    console.log(post)
     return (
         <div className='bg-primary rounded-2xl w-full h-fit border border-main-border shadow-lg'>
             <div className='flex items-center justify-between px-5 py-4'>
