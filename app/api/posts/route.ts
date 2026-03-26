@@ -5,6 +5,7 @@ import db from "@/lib/db";
 import { posts } from "@/schema/post";
 import redis from "@/lib/redis";
 
+
 export async function POST(req: NextRequest) {
     try {
         const session = await getServerSession(authOptions);

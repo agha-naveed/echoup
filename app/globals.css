@@ -170,6 +170,18 @@ select {
   position: relative;
 }
 
+.editable-div::-webkit-scrollbar {
+  width: 6px;
+  border-radius: 10px;
+  background-color: var(--bg-primary);
+}
+
+.editable-div::-webkit-scrollbar-thumb {
+  background: var(--foreground);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
 .modelpostopen-bg {
   background: linear-gradient(180deg, black, transparent);
 }

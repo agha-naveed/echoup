@@ -7,14 +7,85 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { BsEmojiSmile } from "react-icons/bs";
 import { CiCamera } from "react-icons/ci";
 import { PiGif } from "react-icons/pi";
-import { RiSendPlaneFill } from "react-icons/ri";
+import { RiSendPlaneFill, RiShareForward2Line } from "react-icons/ri";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { formatDistanceToNowStrict } from "date-fns";
 import axios from "axios";
+import { GoComment, GoHeart, GoHeartFill } from "react-icons/go";
 
 
 export default function ModelPostOpen({ initialPost, query }: { initialPost: any, query: any }) {
+
+    // Your existing state
+    const currentUserHasLiked = initialPost?.likes?.some((like: any) => like.userId === currentUser?.id) || false;
+    const [isLiked, setIsLiked] = useState(currentUserHasLiked);
+    const [likeCount, setLikeCount] = useState(initialPost?.likes?.length || 0);
+
+    const [shareCount, setShareCount] = useState(initialPost?.shares?.length || 0);
+    const [isSharing, setIsSharing] = useState(false);
+
+
+
+    // NEW: A reference to hold our debounce timer
+    const likeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    const handleLike = () => {
+        if (!post?.id || !currentUser) return;
+
+        // 1. OPTIMISTIC UI: Instantly update the screen (Zero latency)
+        const newLikedState = !isLiked;
+        setIsLiked(newLikedState);
+        setLikeCount((prev: number) => newLikedState ? prev + 1 : prev - 1);
+
+        // 2. DEBOUNCE: Clear any pending database requests if they clicked again
+        if (likeTimeoutRef.current) {
+            clearTimeout(likeTimeoutRef.current);
+        }
+
+        // 3. Set a new countdown. The database is ONLY contacted if the user stops clicking for 800ms.
+        likeTimeoutRef.current = setTimeout(async () => {
+            try {
+                // Send the single request to the backend
+                await axios.post("/api/likes", { postId: post.id });
+            } catch (error) {
+                console.error("Failed to sync like with server");
+
+                // If the server fails, revert the UI back to what it was
+                setIsLiked(!newLikedState);
+                setLikeCount((prev: number) => newLikedState ? prev - 1 : prev + 1);
+            }
+        }, 800); // 800 milliseconds wait time
+    };
+
+    const handleShare = async () => {
+        if (!post?.id || isSharing) return;
+
+        setIsSharing(true);
+        // Optimistically increase share count
+        setShareCount((prev: number) => prev + 1);
+
+        try {
+            await axios.post("/api/shares", { postId: post.id });
+            // Optional: Trigger a "Link Copied!" toast notification here
+            navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}`);
+        } catch (error) {
+            setShareCount((prev: number) => prev - 1);
+        } finally {
+            setIsSharing(false);
+        }
+    };
+
+    useEffect(() => {
+        // Cleanup function that runs when the modal closes
+        return () => {
+            if (likeTimeoutRef.current) {
+                clearTimeout(likeTimeoutRef.current);
+            }
+        };
+    }, []);
+
+
 
     const { data: session } = useSession();
     const currentUser = session?.user;
@@ -30,8 +101,6 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
     const searchParams = useSearchParams();
 
     const post = initialPost
-    // const [post, setPost] = useState<PostType>(initialPost);
-
 
 
     // ================ Slider ================
@@ -47,29 +116,21 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
 
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
-    const updatePhotoUrl = (newIndex: number) => {
-        // Grab existing parameters
-        const params = new URLSearchParams(searchParams.toString());
-        // Update the photo number (adding 1 because arrays start at 0)
-        params.set("photo", (newIndex + 1).toString());
-
-        // REPLACE the URL without adding to browser history!
-        // { scroll: false } prevents the modal from jumping to the top of the page
-        navigate.replace(`${pathname}?${params.toString()}`, { scroll: false });
-    };
     const nextImage = () => {
         if (currentIndex < images.length - 1) {
             const newIndex = currentIndex + 1;
             setCurrentIndex(newIndex);
-            updatePhotoUrl(newIndex);
+
+            window.history.replaceState(null, '', `${pathname}?photo=${newIndex + 1}`);
         }
     };
 
     const prevImage = () => {
         if (currentIndex > 0) {
             const newIndex = currentIndex - 1;
-            setCurrentIndex(prev => prev - 1);
-            updatePhotoUrl(newIndex);
+            setCurrentIndex(newIndex);
+
+            window.history.replaceState(null, '', `${pathname}?photo=${newIndex + 1}`);
         }
     };
     // ================ Slider Ended ================
@@ -120,10 +181,12 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
     };
 
     const handleBack = () => {
-        if (window.history.length > 1) {
+        const isInsideApp = window.history.length > 1 && document.referrer.includes(window.location.host);
+
+        if (isInsideApp) {
             navigate.back();
         } else {
-            navigate.push("/");
+            navigate.push(`/${post?.author?.username || ""}`);
         }
     };
 
@@ -259,6 +322,37 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                     <div className="w-full h-px bg-light-clr px-5 border-b border-main-border"></div>
                 </div>
 
+                {/* Engagement Buttons */}
+                <div className='px-5 py-3 flex items-center gap-4 text-foreground border-t border-main-border'>
+
+                    {/* LIKE BUTTON */}
+                    <button
+                        onClick={handleLike}
+                        className={`flex items-center cursor-pointer gap-2 text-[16px] transition-all hover:bg-dark-clr/50 px-3 py-1.5 rounded-full ${isLiked ? 'text-red-500' : 'hover:text-red-500'}`}
+                    >
+                        {isLiked ? <GoHeartFill className="text-[22px]" /> : <GoHeart className="text-[22px]" />}
+                        <span className='font-medium'>{likeCount}</span>
+                    </button>
+
+                    {/* COMMENT BUTTON */}
+                    <button
+                        onClick={() => setIsFocus(true)}
+                        className='text-[16px] cursor-pointer flex items-center gap-2 transition-all hover:bg-dark-clr/50 hover:text-main-blue px-3 py-1.5 rounded-full'
+                    >
+                        <GoComment className="text-[20px]" />
+                        <span className='font-medium'>{realComments.length}</span>
+                    </button>
+
+                    {/* SHARE BUTTON */}
+                    <button
+                        onClick={handleShare}
+                        className='flex items-center gap-2 text-[16px] cursor-pointer transition-all hover:bg-dark-clr/50 hover:text-green-500 px-3 py-1.5 rounded-full'
+                    >
+                        <RiShareForward2Line className="text-[22px]" />
+                        <span className='font-medium'>{shareCount}</span>
+                    </button>
+                </div>
+
                 <div className='flex-1 overflow-y-auto px-5 py-4 grid gap-4 content-start relative'>
                     <div className='w-fit h-7.5 relative z-30' ref={dropdownRef}>
                         <ul className={`${isOpen ? "bg-zinc-900 rounded-lg shadow-xl" : "bg-dark-clr rounded-full"} w-max group absolute top-0 overflow-hidden`}>
@@ -282,32 +376,30 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                     ) : (
                         realComments.map((comment: any) => (
                             photoQuery == comment.photoIndex &&
-                            <>
-                                <div key={comment.id} className='flex items-start gap-2'>
+                            <div key={comment.id} className='flex items-start gap-2'>
 
-                                    <Link href={`/${comment.author.username}`} className='min-w-10 h-10 rounded-full overflow-hidden border border-main-border shrink-0'>
-                                        {comment.author.profileImage ? (
-                                            <Image src={comment.author.profileImage} alt="DP" width={100} height={100} className="w-full h-full object-cover" />
-                                        ) : (
-                                            <div className="w-full h-full bg-main-blue flex items-center justify-center text-white font-bold uppercase">
-                                                {comment.author.firstName?.charAt(0) || "U"}
-                                            </div>
-                                        )}
-                                    </Link>
-
-                                    <div className='grid gap-1 text-foreground text-[14px] bg-dark-clr/40 rounded-[12px] rounded-tl-none py-2 px-3'>
-                                        <div className="flex items-center gap-2">
-                                            <Link href={`/${comment.author.username}`} className='font-bold w-fit text-[13px] hover:underline'>
-                                                {comment.author.firstName} {comment.author.lastName}
-                                            </Link>
-                                            <span className="text-[11px] text-gray-500">
-                                                {formatDistanceToNowStrict(new Date(comment.createdAt), { addSuffix: true })}
-                                            </span>
+                                <Link href={`/${comment.author.username}`} className='min-w-10 h-10 rounded-full overflow-hidden border border-main-border shrink-0'>
+                                    {comment.author.profileImage ? (
+                                        <Image src={comment.author.profileImage} alt="DP" width={100} height={100} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="w-full h-full bg-main-blue flex items-center justify-center text-white font-bold uppercase">
+                                            {comment.author.firstName?.charAt(0) || "U"}
                                         </div>
-                                        <span className='text-foreground whitespace-pre-wrap'>{comment.content}</span>
+                                    )}
+                                </Link>
+
+                                <div className='grid gap-1 text-foreground text-[14px] bg-dark-clr/40 rounded-[12px] rounded-tl-none py-2 px-3'>
+                                    <div className="flex items-center gap-2">
+                                        <Link href={`/${comment.author.username}`} className='font-bold w-fit text-[13px] hover:underline'>
+                                            {comment.author.firstName} {comment.author.lastName}
+                                        </Link>
+                                        <span className="text-[11px] text-gray-500">
+                                            {formatDistanceToNowStrict(new Date(comment.createdAt), { addSuffix: true })}
+                                        </span>
                                     </div>
+                                    <span className='text-foreground whitespace-pre-wrap'>{comment.content}</span>
                                 </div>
-                            </>
+                            </div>
                         ))
                     )}
                 </div>
@@ -334,14 +426,14 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                             <div className="flex items-end relative overflow-hidden">
                                 <div
                                     ref={commentRef}
-                                    contentEditable
                                     role="textbox"
+                                    contentEditable
                                     aria-multiline="true"
                                     data-placeholder={`Commenting as ${currentUser?.name || "User"}...`}
                                     onInput={handleInput}
-                                    className={`editable-div ${isEmpty ? "is-empty" : ""} w-full max-h-[150px] min-h-[30px] overflow-y-auto resize-none p-1 pr-9 outline-none whitespace-pre-wrap wrap-break-words break-all select-text`}
+                                    className={`editable-div ${isEmpty ? "is-empty" : ""} w-full max-h-[150px] ${isFocus ? "min-h-[100px]" : "min-h-[30px]"} overflow-y-auto resize-none p-1 pr-9 outline-none whitespace-pre-wrap wrap-break-words break-all select-text`}
                                 />
-                                <button disabled={isEmpty} onClick={handleCommentSubmit} className='disabled:opacity-50 disabled:cursor-not-allowed text-main-blue hover:bg-main-blue/10 transition-all cursor-pointer absolute right-0 bottom-0 p-1.5 rounded-full mb-0.5' title='Send Message'>
+                                <button onClick={handleCommentSubmit} className={`${isEmpty && "opacity-50 cursor-auto!"}  text-main-blue hover:bg-main-blue/10 transition-all cursor-pointer absolute right-0 bottom-0 p-1.5 rounded-full mb-0.5`} title='Send Message'>
                                     <RiSendPlaneFill className='text-[20px] relative -left-px' />
                                 </button>
                             </div>

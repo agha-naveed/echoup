@@ -29,7 +29,9 @@ export default async function page({ params, searchParams }: { params: Promise<{
                     }
                 },
                 orderBy: (comments, { desc }) => [desc(comments.createdAt)]
-            }
+            },
+            likes: true,
+            shares: true,
         }
     });
 
