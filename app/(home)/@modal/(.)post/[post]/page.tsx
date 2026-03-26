@@ -16,6 +16,19 @@ export default async function page({ params, searchParams }: { params: Promise<{
                     lastName: true,
                     profileImage: true,
                 }
+            },
+            comments: {
+                with: {
+                    author: {
+                        columns: {
+                            username: true,
+                            firstName: true,
+                            lastName: true,
+                            profileImage: true,
+                        }
+                    }
+                },
+                orderBy: (comments, { desc }) => [desc(comments.createdAt)]
             }
         }
     });

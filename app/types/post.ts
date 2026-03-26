@@ -10,7 +10,7 @@ export type PostType = {
     imageUrl: string;
     createdAt: string;
     likes: number;
-    comments: number;
+    comments: any[];
     shares: number;
     isLiked?: boolean;
 };

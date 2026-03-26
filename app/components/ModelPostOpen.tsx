@@ -3,7 +3,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { PostType } from "../types/post"; // Adjust path if needed
 import { IoIosArrowBack, IoIosArrowDown, IoIosArrowForward, IoMdCloseCircle } from "react-icons/io";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { BsEmojiSmile } from "react-icons/bs";
 import { CiCamera } from "react-icons/ci";
 import { PiGif } from "react-icons/pi";
@@ -11,8 +11,9 @@ import { RiSendPlaneFill } from "react-icons/ri";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { formatDistanceToNowStrict } from "date-fns";
+import axios from "axios";
 
-// Tell TypeScript to expect the initialPost prop!
+
 export default function ModelPostOpen({ initialPost, query }: { initialPost: any, query: any }) {
 
     const { data: session } = useSession();
@@ -25,9 +26,12 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
 
     const dropdownRef = useRef<HTMLDivElement>(null);
     const navigate = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
 
+    const post = initialPost
+    // const [post, setPost] = useState<PostType>(initialPost);
 
-    const [post, setPost] = useState<PostType | any>(initialPost);
 
 
     // ================ Slider ================
@@ -43,22 +47,77 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
 
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
+    const updatePhotoUrl = (newIndex: number) => {
+        // Grab existing parameters
+        const params = new URLSearchParams(searchParams.toString());
+        // Update the photo number (adding 1 because arrays start at 0)
+        params.set("photo", (newIndex + 1).toString());
+
+        // REPLACE the URL without adding to browser history!
+        // { scroll: false } prevents the modal from jumping to the top of the page
+        navigate.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    };
     const nextImage = () => {
         if (currentIndex < images.length - 1) {
-            setCurrentIndex(prev => prev + 1);
+            const newIndex = currentIndex + 1;
+            setCurrentIndex(newIndex);
+            updatePhotoUrl(newIndex);
         }
     };
 
     const prevImage = () => {
         if (currentIndex > 0) {
+            const newIndex = currentIndex - 1;
             setCurrentIndex(prev => prev - 1);
+            updatePhotoUrl(newIndex);
         }
     };
+    // ================ Slider Ended ================
 
-    // ==========================================
 
 
-    const [comments, setComments] = useState(["this is good!", "mashallah", "Lorem Ipsum"]);
+    const [realComments, setRealComments] = useState(post?.comments || []);
+
+    const commentRef = useRef<HTMLDivElement>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleCommentSubmit = async () => {
+        const text = commentRef.current?.innerText.trim();
+        if (!text || isSubmitting || !post?.id) return;
+
+        setIsSubmitting(true);
+
+        const temporaryComment = {
+            id: `temp-${Date.now()}`,
+            content: text,
+            createdAt: new Date().toISOString(),
+            author: {
+                username: currentUser?.name?.replace(/\s+/g, '').toLowerCase() || "user",
+                firstName: currentUser?.name?.split(" ")[0] || "User",
+                lastName: currentUser?.name?.split(" ")[1] || "",
+                profileImage: currentUser?.image || null,
+            }
+        };
+
+        try {
+            const addComment = await axios.post("/api/comments", {
+                postId: post.id,
+                content: text,
+                photoIndex: photoQuery
+            });
+
+            if (addComment.status == 200) {
+                setRealComments((prevComments: any) => [temporaryComment, ...(prevComments || [])]);
+                if (commentRef.current) commentRef.current.innerText = "";
+                setIsEmpty(true);
+            }
+
+        } catch (error) {
+            alert("Failed to add comment");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     const handleBack = () => {
         if (window.history.length > 1) {
@@ -69,7 +128,7 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
     };
 
     const sortAllComments = () => {
-        setComments(prevComments => [...prevComments].reverse());
+        setRealComments((prevComments: any) => [...prevComments].reverse());
     };
 
     const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
@@ -208,22 +267,49 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                                 <IoIosArrowDown className={`transition-transform ${isOpen ? "rotate-180" : ""}`} />
                             </li>
                             {isOpen && (
-                                <li onClick={() => { setSortComment(sortComment === "new" ? "old" : "new"); setIsOpen(false); sortAllComments() }} className={`flex gap-1 items-center text-foreground cursor-pointer transition-all hover:bg-white/10 px-4 py-2 text-[14px] w-full border-t border-main-border`}>
+                                <li onClick={() => { setSortComment(sortComment === "new" ? "old" : "new"); setIsOpen(false); sortAllComments(); navigate.refresh() }} className={`flex gap-1 items-center text-foreground cursor-pointer transition-all hover:bg-white/10 px-4 py-2 text-[14px] w-full border-t border-main-border`}>
                                     <span>{sortComment === "new" ? "Sort by Oldest" : "Sort by Newest"}</span>
                                 </li>
                             )}
                         </ul>
                     </div>
 
-                    {comments.map((item, idx) => (
-                        <div key={`post-model-comment-${idx}`} className='flex items-start gap-2'>
-                            <div className='min-w-10 h-10 rounded-full overflow-hidden bg-main-blue flex items-center justify-center text-white font-bold shrink-0'>U</div>
-                            <div className='grid gap-1 text-foreground text-[14px] bg-dark-clr/40 rounded-[12px] rounded-tl-none py-2 px-3'>
-                                <span className='font-bold w-fit text-[13px]'>Random User</span>
-                                <span className='text-foreground'>{item}</span>
-                            </div>
+                    {/* Comments List */}
+                    {realComments.length === 0 ? (
+                        <div className="text-center text-gray-500 text-[14px] mt-10">
+                            No comments yet. Be the first to reply!
                         </div>
-                    ))}
+                    ) : (
+                        realComments.map((comment: any) => (
+                            photoQuery == comment.photoIndex &&
+                            <>
+                                <div key={comment.id} className='flex items-start gap-2'>
+
+                                    <Link href={`/${comment.author.username}`} className='min-w-10 h-10 rounded-full overflow-hidden border border-main-border shrink-0'>
+                                        {comment.author.profileImage ? (
+                                            <Image src={comment.author.profileImage} alt="DP" width={100} height={100} className="w-full h-full object-cover" />
+                                        ) : (
+                                            <div className="w-full h-full bg-main-blue flex items-center justify-center text-white font-bold uppercase">
+                                                {comment.author.firstName?.charAt(0) || "U"}
+                                            </div>
+                                        )}
+                                    </Link>
+
+                                    <div className='grid gap-1 text-foreground text-[14px] bg-dark-clr/40 rounded-[12px] rounded-tl-none py-2 px-3'>
+                                        <div className="flex items-center gap-2">
+                                            <Link href={`/${comment.author.username}`} className='font-bold w-fit text-[13px] hover:underline'>
+                                                {comment.author.firstName} {comment.author.lastName}
+                                            </Link>
+                                            <span className="text-[11px] text-gray-500">
+                                                {formatDistanceToNowStrict(new Date(comment.createdAt), { addSuffix: true })}
+                                            </span>
+                                        </div>
+                                        <span className='text-foreground whitespace-pre-wrap'>{comment.content}</span>
+                                    </div>
+                                </div>
+                            </>
+                        ))
+                    )}
                 </div>
 
                 <div className='p-4 border-t border-main-border mt-auto'>
@@ -247,6 +333,7 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                             }}>
                             <div className="flex items-end relative overflow-hidden">
                                 <div
+                                    ref={commentRef}
                                     contentEditable
                                     role="textbox"
                                     aria-multiline="true"
@@ -254,7 +341,7 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                                     onInput={handleInput}
                                     className={`editable-div ${isEmpty ? "is-empty" : ""} w-full max-h-[150px] min-h-[30px] overflow-y-auto resize-none p-1 pr-9 outline-none whitespace-pre-wrap wrap-break-words break-all select-text`}
                                 />
-                                <button disabled={isEmpty} className='disabled:opacity-50 disabled:cursor-not-allowed text-main-blue hover:bg-main-blue/10 transition-all cursor-pointer absolute right-0 bottom-0 p-1.5 rounded-full mb-0.5' title='Send Message'>
+                                <button disabled={isEmpty} onClick={handleCommentSubmit} className='disabled:opacity-50 disabled:cursor-not-allowed text-main-blue hover:bg-main-blue/10 transition-all cursor-pointer absolute right-0 bottom-0 p-1.5 rounded-full mb-0.5' title='Send Message'>
                                     <RiSendPlaneFill className='text-[20px] relative -left-px' />
                                 </button>
                             </div>
