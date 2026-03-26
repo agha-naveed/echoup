@@ -3,27 +3,23 @@ import Image from 'next/image'
 import { GoHeart, GoHeartFill, GoComment } from "react-icons/go";
 import { RiSendPlaneFill, RiShareForward2Line } from "react-icons/ri";
 import { HiOutlineDotsHorizontal } from "react-icons/hi";
-import { PostType } from '../types/post';
 import Link from 'next/link';
-import { useEffect, useInsertionEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BsEmojiSmile } from "react-icons/bs";
 import { CiCamera } from 'react-icons/ci';
 import { PiGif } from 'react-icons/pi';
 import { IoIosArrowDown } from 'react-icons/io';
 import { formatDistanceToNowStrict } from 'date-fns';
+import { getPlaiceholder } from "plaiceholder";
 
 export default function PostOpen({ initialPost: post, query }: { initialPost: any, query: any }) {
-    // const [post, setPost] = useState<PostType>()
+
     const [isEmpty, setIsEmpty] = useState(true);
     const [isFocus, setIsFocus] = useState(false)
     const [sortComment, setSortComment] = useState("new")
     const [isOpen, setIsOpen] = useState(false);
 
     const dropdownRef = useRef<HTMLDivElement>(null);
-
-    // useEffect(() => {
-    //     console.log(post?.imageUrl)
-    // }, [])
 
 
     const handleInput = (e: any) => {
