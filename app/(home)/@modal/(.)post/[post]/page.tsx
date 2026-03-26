@@ -6,7 +6,6 @@ import { notFound } from "next/navigation";
 
 export default async function page({ params, searchParams }: { params: Promise<{ post: string }>, searchParams: Promise<{ photo: string }> }) {
 
-    // 1. Fetch the data securely on the server!
     const postData = await db.query.posts.findFirst({
         where: eq(posts.id, (await params).post),
         with: {

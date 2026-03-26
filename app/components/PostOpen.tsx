@@ -10,9 +10,10 @@ import { BsEmojiSmile } from "react-icons/bs";
 import { CiCamera } from 'react-icons/ci';
 import { PiGif } from 'react-icons/pi';
 import { IoIosArrowDown } from 'react-icons/io';
+import { formatDistanceToNowStrict } from 'date-fns';
 
-export default function PostOpen() {
-    const [post, setPost] = useState<PostType>()
+export default function PostOpen({ initialPost: post, query }: { initialPost: any, query: any }) {
+    // const [post, setPost] = useState<PostType>()
     const [isEmpty, setIsEmpty] = useState(true);
     const [isFocus, setIsFocus] = useState(false)
     const [sortComment, setSortComment] = useState("new")
@@ -20,14 +21,9 @@ export default function PostOpen() {
 
     const dropdownRef = useRef<HTMLDivElement>(null);
 
-    const getData = async () => {
-        const response = await fetch("/api/demo")
-        const res = await response.json()
-        setPost(res[1])
-    }
-    useInsertionEffect(() => {
-        getData()
-    }, [])
+    // useEffect(() => {
+    //     console.log(post?.imageUrl)
+    // }, [])
 
 
     const handleInput = (e: any) => {
@@ -62,7 +58,7 @@ export default function PostOpen() {
 
                     <div className='text-foreground flex flex-col'>
                         <h4 className='font-medium text-[17px]'>{post?.author?.firstName} {post?.author?.lastName}</h4>
-                        <span className='text-[11px] text-foreground/70'>{post?.createdAt}</span>
+                        <span className='text-[11px] text-foreground/70'>{post?.createdAt ? formatDistanceToNowStrict(new Date(post.createdAt), { addSuffix: true }) : ""}</span>
                     </div>
                 </div>
                 <HiOutlineDotsHorizontal className='text-[22px] p-1.5 cursor-pointer w-8.75 h-8.75 transition-all hover:bg-dark-clr rounded-full text-foreground' />
@@ -73,9 +69,9 @@ export default function PostOpen() {
                     post?.content && <h4 className='text-white text-[17px] px-5'>{post?.content}</h4>
                 }
                 {
-                    post?.imageUrl &&
-                    <div className=''>
-                        <Image src={post?.imageUrl || ""} className='w-full max-h-full cursor-pointer' alt='' width={1000} height={1000} />
+                    post?.imageUrl[query.photo - 1] &&
+                    <div>
+                        <Image src={post?.imageUrl[query.photo - 1] || ""} className='w-full max-h-full cursor-pointer' alt='' width={1000} height={1000} />
                     </div>
                 }
             </div>

@@ -106,7 +106,7 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                     <div className="grid ml-1.5 text-white">
                         <span className="text-[22px] font-medium leading-tight">{post?.author?.firstName} {post?.author?.lastName}</span>
                         <span className="text-[12px] text-gray-300">
-                            {post?.createdAt ? formatDistanceToNowStrict(new Date(post.createdAt), { addSuffix: true }) : ""}
+                            {post?.createdAt ? formatDistanceToNowStrict(new Date(post.createdAt), { addSuffix: true }) : "Just now"}
                         </span>
                     </div>
                 </div>
