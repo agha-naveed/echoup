@@ -14,17 +14,16 @@ export default function Post({ post }: Props) {
     const images = post.imageUrl || [];
     const imageCount = images.length;
 
-    const ImageTile = ({ src, alt, width = 600, height = 600, idx, cHeight }: any) => (
-        <Link href={`/post/${post.id}?photo=${idx + 1}`} className={`${imageCount == 4 && "h-74.25! overflow-hidden"} w-full h-full relative group`}>
+    const ImageTile = ({ src, alt, width = 600, height = 600, idx }: any) => (
+        <Link href={`/post/${post.id}?photo=${idx + 1}`} className={`${imageCount == 4 && "xl:h-[272px]! usm:h-full h-[150px] overflow-hidden"} ${imageCount == 3 && "sm:h-[200px] h-[160px]"} ${imageCount == 2 && "usm:h-75 h-55"} w-full relative group`}>
             <div className={`absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity z-10`} />
-            
-            <Image 
-                src={src} 
-                alt={alt || "Post attachment"} 
-                className={`w-full h-[${cHeight}]! object-cover`} 
-                width={width} 
+
+            <Image
+                src={src}
+                alt={alt || "Post attachment"}
+                className={`w-full h-full object-cover`}
+                width={width}
                 height={height}
-                style={{height: imageCount == 4 ? "100%" : ""}}
             />
         </Link>
     );
@@ -56,10 +55,10 @@ export default function Post({ post }: Props) {
                         {post.content}
                     </Link>
                 )}
-                
+
                 {imageCount > 0 && (
                     <div className='w-full border-y border-main-border bg-[#0a0a0a] max-h-150 overflow-hidden'>
-                        
+
                         {imageCount === 1 && (
                             <div className='w-full max-h-125 flex items-center justify-center'>
                                 <ImageTile src={images[0]} width={800} height={800} idx={0} />
@@ -67,30 +66,30 @@ export default function Post({ post }: Props) {
                         )}
 
                         {imageCount === 2 && (
-                            <div className='grid grid-cols-2 gap-1 h-75'>
+                            <div className='grid grid-cols-2 gap-1 usm:h-75 h-55'>
                                 <ImageTile src={images[0]} idx={0} />
                                 <ImageTile src={images[1]} idx={1} />
                             </div>
                         )}
 
                         {imageCount === 3 && (
-                            <div className='flex gap-1 h-100'>
-                                <div className='w-[65%] h-full'>
+                            <div className='flex gap-1 sm:h-100 h-80'>
+                                <div className='usm:w-[65%] w-[60%] h-full'>
                                     <ImageTile src={images[0]} idx={0} />
                                 </div>
-                                <div className='flex w-[35%] flex-col gap-1 h-full'>
-                                    <ImageTile src={images[1]} idx={1} cHeight={"175px"} />
-                                    <ImageTile src={images[2]} idx={2} cHeight={"175px"} />
+                                <div className='flex usm:w-[35%] w-[40%] flex-col gap-1 h-full'>
+                                    <ImageTile src={images[1]} idx={1} />
+                                    <ImageTile src={images[2]} idx={2} />
                                 </div>
                             </div>
                         )}
 
                         {imageCount >= 4 && (
-                            <div className='grid grid-cols-2 gap-1 h-full'>
-                                <ImageTile src={images[0]} idx={0} width={400} height={300} cHeight={"100%"} />
-                                <ImageTile src={images[1]} idx={1} width={400} height={300} cHeight={"100%"} />
-                                <ImageTile src={images[2]} idx={2} width={400} height={300} cHeight={"100%"} />
-                                <ImageTile src={images[3]} idx={3} width={400} height={300} cHeight={"100%"} />
+                            <div className='grid grid-cols-2 gap-1 sm:h-[500px] usm:h-[350px] h-full xl:h-[550px]'>
+                                <ImageTile src={images[0]} idx={0} width={400} height={100} cHeight={"100%"} />
+                                <ImageTile src={images[1]} idx={1} width={400} height={100} cHeight={"100%"} />
+                                <ImageTile src={images[2]} idx={2} width={400} height={100} cHeight={"100%"} />
+                                <ImageTile src={images[3]} idx={3} width={400} height={100} cHeight={"100%"} />
                             </div>
                         )}
                     </div>
