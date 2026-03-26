@@ -94,15 +94,18 @@ input::placeholder {
   cursor: pointer;
 }
 
-.post-open {}
+.post-open,
+.custom-scroll {}
 
-.post-open::-webkit-scrollbar {
-  width: 10px;
+.post-open::-webkit-scrollbar,
+.custom-scroll::-webkit-scrollbar {
+  width: 8px;
   border-radius: 10px;
   background-color: var(--bg-primary);
 }
 
-.post-open::-webkit-scrollbar-thumb {
+.post-open::-webkit-scrollbar-thumb,
+.custom-scroll::-webkit-scrollbar-thumb {
   background: var(--foreground);
   border-radius: 10px;
   cursor: pointer;
@@ -171,7 +174,7 @@ select {
 }
 
 .editable-div::-webkit-scrollbar {
-  width: 6px;
+  width: 7px;
   border-radius: 10px;
   background-color: var(--bg-primary);
 }

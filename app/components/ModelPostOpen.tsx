@@ -1,9 +1,8 @@
 "use client"
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { PostType } from "../types/post"; // Adjust path if needed
 import { IoIosArrowBack, IoIosArrowDown, IoIosArrowForward, IoMdCloseCircle } from "react-icons/io";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { BsEmojiSmile } from "react-icons/bs";
 import { CiCamera } from "react-icons/ci";
 import { PiGif } from "react-icons/pi";
@@ -17,78 +16,35 @@ import { GoComment, GoHeart, GoHeartFill } from "react-icons/go";
 
 export default function ModelPostOpen({ initialPost, query }: { initialPost: any, query: any }) {
 
-    // Your existing state
-    const currentUserHasLiked = initialPost?.likes?.some((like: any) => like.userId === currentUser?.id) || false;
-    const [isLiked, setIsLiked] = useState(currentUserHasLiked);
-    const [likeCount, setLikeCount] = useState(initialPost?.likes?.length || 0);
-
-    const [shareCount, setShareCount] = useState(initialPost?.shares?.length || 0);
-    const [isSharing, setIsSharing] = useState(false);
-
-
-
-    // NEW: A reference to hold our debounce timer
-    const likeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-    const handleLike = () => {
-        if (!post?.id || !currentUser) return;
-
-        // 1. OPTIMISTIC UI: Instantly update the screen (Zero latency)
-        const newLikedState = !isLiked;
-        setIsLiked(newLikedState);
-        setLikeCount((prev: number) => newLikedState ? prev + 1 : prev - 1);
-
-        // 2. DEBOUNCE: Clear any pending database requests if they clicked again
-        if (likeTimeoutRef.current) {
-            clearTimeout(likeTimeoutRef.current);
-        }
-
-        // 3. Set a new countdown. The database is ONLY contacted if the user stops clicking for 800ms.
-        likeTimeoutRef.current = setTimeout(async () => {
-            try {
-                // Send the single request to the backend
-                await axios.post("/api/likes", { postId: post.id });
-            } catch (error) {
-                console.error("Failed to sync like with server");
-
-                // If the server fails, revert the UI back to what it was
-                setIsLiked(!newLikedState);
-                setLikeCount((prev: number) => newLikedState ? prev - 1 : prev + 1);
-            }
-        }, 800); // 800 milliseconds wait time
-    };
-
-    const handleShare = async () => {
-        if (!post?.id || isSharing) return;
-
-        setIsSharing(true);
-        // Optimistically increase share count
-        setShareCount((prev: number) => prev + 1);
-
-        try {
-            await axios.post("/api/shares", { postId: post.id });
-            // Optional: Trigger a "Link Copied!" toast notification here
-            navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}`);
-        } catch (error) {
-            setShareCount((prev: number) => prev - 1);
-        } finally {
-            setIsSharing(false);
-        }
-    };
-
-    useEffect(() => {
-        // Cleanup function that runs when the modal closes
-        return () => {
-            if (likeTimeoutRef.current) {
-                clearTimeout(likeTimeoutRef.current);
-            }
-        };
-    }, []);
-
-
 
     const { data: session } = useSession();
     const currentUser = session?.user;
+
+    const [likes, setLikes] = useState<any[]>(initialPost?.likes || []);
+    const [shares, setShares] = useState<any[]>(initialPost?.shares || []);
+    const [comments, setComments] = useState<any[]>(initialPost?.comments || []);
+
+    // 2. DERIVED STATE: These automatically recalculate whenever the slider (currentIndex) changes!
+    const currentPhotoLikes = likes.filter((l: any) => l.photoIndex === currentIndex);
+    const currentPhotoShares = shares.filter((s: any) => s.photoIndex === currentIndex);
+    const currentPhotoComments = comments.filter((c: any) => c.photoIndex === currentIndex);
+
+    // 3. THE MAGIC: Check if the logged-in user is inside the current photo's likes array.
+    // If they liked it yesterday, this will instantly be TRUE when the modal opens!
+    const isLiked = currentPhotoLikes.some((l: any) => l.userId === currentUser?.id);
+
+    // 4. Get the exact counts for the current photo
+    const likeCount = currentPhotoLikes.length;
+    const shareCount = currentPhotoShares.length;
+    const commentCount = currentPhotoComments.length;
+
+    // Ref for the debounced Like button
+    const likeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+
+    const [isSharing, setIsSharing] = useState(false);
+
+
 
     const [isEmpty, setIsEmpty] = useState(true);
     const [isFocus, setIsFocus] = useState(false);
@@ -98,9 +54,87 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
     const dropdownRef = useRef<HTMLDivElement>(null);
     const navigate = useRouter();
     const pathname = usePathname();
-    const searchParams = useSearchParams();
 
     const post = initialPost
+
+
+    const handleLike = () => {
+        if (!post?.id || !currentUser) return;
+
+        // 1. OPTIMISTIC UI: Update the 'likes' array instantly for THIS specific photo
+        if (isLiked) {
+            // UNLIKE: Remove the user's like for the current photo
+            setLikes((prev: any[]) => prev.filter(l => !(l.userId === currentUser.id && l.photoIndex === currentIndex)));
+        } else {
+            // LIKE: Add a fake like object for the current photo
+            setLikes((prev: any[]) => [
+                ...prev,
+                { id: `temp-like-${Date.now()}`, userId: currentUser.id, photoIndex: currentIndex }
+            ]);
+        }
+
+        // 2. DEBOUNCE LOGIC
+        if (likeTimeoutRef.current) {
+            clearTimeout(likeTimeoutRef.current);
+        }
+
+        likeTimeoutRef.current = setTimeout(async () => {
+            try {
+                // 3. Send the exact photoIndex to the backend!
+                await axios.post("/api/likes", {
+                    postId: post.id,
+                    photoIndex: currentIndex
+                });
+            } catch (error) {
+                console.error("Failed to sync like with server");
+
+                // 4. FALLBACK: If the server fails, revert the array change
+                if (isLiked) {
+                    // It was originally liked, we tried to unlike, but it failed. Add it back.
+                    setLikes((prev: any[]) => [...prev, { id: `temp-like-${Date.now()}`, userId: currentUser.id, photoIndex: currentIndex }]);
+                } else {
+                    // It was originally unliked, we tried to like, but it failed. Remove it.
+                    setLikes((prev: any[]) => prev.filter(l => !(l.userId === currentUser.id && l.photoIndex === currentIndex)));
+                }
+            }
+        }, 800);
+    };
+
+    const handleShare = async () => {
+        if (!post?.id || isSharing || !currentUser) return;
+
+        setIsSharing(true);
+
+        // 1. OPTIMISTIC UI: Add a temporary share object to the array for THIS photo
+        const tempShare = { id: `temp-share-${Date.now()}`, userId: currentUser.id, photoIndex: currentIndex };
+        setShares((prev: any[]) => [...prev, tempShare]);
+
+        try {
+            // 2. Send the exact photoIndex to the backend!
+            await axios.post("/api/shares", {
+                postId: post.id,
+                photoIndex: currentIndex
+            });
+
+            // 3. Copy the link WITH the specific photo parameter!
+            navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}?photo=${currentIndex + 1}`);
+
+        } catch (error) {
+            console.error("Failed to share");
+            // FALLBACK: Remove the temporary share if the database fails
+            setShares((prev: any[]) => prev.filter(s => s.id !== tempShare.id));
+        } finally {
+            setIsSharing(false);
+        }
+    };
+
+    useEffect(() => {
+        return () => {
+            if (likeTimeoutRef.current) {
+                clearTimeout(likeTimeoutRef.current);
+            }
+        };
+    }, []);
 
 
     // ================ Slider ================
@@ -111,7 +145,7 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
 
     const photoQuery = query.photo;
 
-    const initialIndex = photoQuery ? parseInt(photoQuery) - 1 : 0;
+    const initialIndex = photoQuery ? +photoQuery - 1 : 0;
 
 
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
@@ -133,10 +167,11 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
             window.history.replaceState(null, '', `${pathname}?photo=${newIndex + 1}`);
         }
     };
+
     // ================ Slider Ended ================
 
 
-
+    console.log(post)
     const [realComments, setRealComments] = useState(post?.comments || []);
 
     const commentRef = useRef<HTMLDivElement>(null);
@@ -164,7 +199,7 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
             const addComment = await axios.post("/api/comments", {
                 postId: post.id,
                 content: text,
-                photoIndex: photoQuery
+                photoIndex: currentIndex
             });
 
             if (addComment.status == 200) {
@@ -328,8 +363,9 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                     {/* LIKE BUTTON */}
                     <button
                         onClick={handleLike}
-                        className={`flex items-center cursor-pointer gap-2 text-[16px] transition-all hover:bg-dark-clr/50 px-3 py-1.5 rounded-full ${isLiked ? 'text-red-500' : 'hover:text-red-500'}`}
+                        className={`flex items-center gap-2 text-[16px] transition-all hover:bg-dark-clr/50 px-3 py-1.5 rounded-full ${isLiked ? 'text-red-500' : 'hover:text-red-500'}`}
                     >
+                        {/* If isLiked is true, show the filled red heart immediately! */}
                         {isLiked ? <GoHeartFill className="text-[22px]" /> : <GoHeart className="text-[22px]" />}
                         <span className='font-medium'>{likeCount}</span>
                     </button>
@@ -340,7 +376,8 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                         className='text-[16px] cursor-pointer flex items-center gap-2 transition-all hover:bg-dark-clr/50 hover:text-main-blue px-3 py-1.5 rounded-full'
                     >
                         <GoComment className="text-[20px]" />
-                        <span className='font-medium'>{realComments.length}</span>
+                        {/* Shows the exact comment count for THIS photo */}
+                        <span className='font-medium'>{commentCount}</span>
                     </button>
 
                     {/* SHARE BUTTON */}
@@ -349,11 +386,12 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                         className='flex items-center gap-2 text-[16px] cursor-pointer transition-all hover:bg-dark-clr/50 hover:text-green-500 px-3 py-1.5 rounded-full'
                     >
                         <RiShareForward2Line className="text-[22px]" />
+                        {/* Shows the exact share count for THIS photo */}
                         <span className='font-medium'>{shareCount}</span>
                     </button>
                 </div>
 
-                <div className='flex-1 overflow-y-auto px-5 py-4 grid gap-4 content-start relative'>
+                <div className='flex-1 overflow-y-auto custom-scroll px-5 py-4 grid gap-4 content-start relative'>
                     <div className='w-fit h-7.5 relative z-30' ref={dropdownRef}>
                         <ul className={`${isOpen ? "bg-zinc-900 rounded-lg shadow-xl" : "bg-dark-clr rounded-full"} w-max group absolute top-0 overflow-hidden`}>
                             <li onClick={() => setIsOpen(true)} className='flex gap-1 items-center text-foreground cursor-pointer transition-all hover:bg-zinc-900/30 w-full px-3 py-1.5 text-[14px] font-medium'>
@@ -375,12 +413,12 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                         </div>
                     ) : (
                         realComments.map((comment: any) => (
-                            photoQuery == comment.photoIndex &&
+                            currentIndex == comment.photoIndex &&
                             <div key={comment.id} className='flex items-start gap-2'>
 
                                 <Link href={`/${comment.author.username}`} className='min-w-10 h-10 rounded-full overflow-hidden border border-main-border shrink-0'>
                                     {comment.author.profileImage ? (
-                                        <Image src={comment.author.profileImage} alt="DP" width={100} height={100} className="w-full h-full object-cover" />
+                                        <Image src={comment?.author.profileImage} alt={`${comment?.author.firstName} ${comment?.author.lastName} Profile Picture`} width={100} height={100} className="w-full h-full object-cover" />
                                     ) : (
                                         <div className="w-full h-full bg-main-blue flex items-center justify-center text-white font-bold uppercase">
                                             {comment.author.firstName?.charAt(0) || "U"}
@@ -438,7 +476,7 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                                 </button>
                             </div>
 
-                            <div className={`items-center gap-3 pt-2 pb-1 ${isFocus ? "flex" : "hidden"}`}>
+                            <div className={`items-center gap-3 pt-2 pb-1 ${isFocus ? "flex" : "hidden"}`} onMouseDown={(e) => e.preventDefault()}>
                                 <BsEmojiSmile className='text-[18px] cursor-pointer text-gray-400 hover:text-white transition' title='Emoji' />
                                 <CiCamera className='text-[22px] cursor-pointer text-gray-400 hover:text-white transition' title='Image' />
                                 <PiGif className="text-[22px] cursor-pointer text-gray-400 hover:text-white transition" title='GIF' />
