@@ -156,7 +156,6 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
     // ================ Slider Ended ================
 
 
-    console.log(post)
     const [realComments, setRealComments] = useState(post?.comments || []);
 
     const commentRef = useRef<HTMLDivElement>(null);
@@ -201,9 +200,7 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
     };
 
     const handleBack = () => {
-        const isInsideApp = window.history.length > 1 && document.referrer.includes(window.location.host);
-
-        if (isInsideApp) {
+        if (window.history.length > 1) {
             navigate.back();
         } else {
             navigate.push(`/${post?.author?.username || ""}`);

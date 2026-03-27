@@ -24,8 +24,23 @@ export default async function page() {
           lastName: true,
           profileImage: true,
         }
-      }
-    }
+      },
+      likes: true,
+      comments: {
+        with: {
+          author: {
+            columns: {
+              username: true,
+              firstName: true,
+              lastName: true,
+              profileImage: true
+            }
+          }
+        },
+        orderBy: (comments, { desc }) => [desc(comments.createdAt)]
+      },
+      shares: true
+    },
   });
 
   return (
