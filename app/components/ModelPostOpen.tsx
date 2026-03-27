@@ -20,25 +20,28 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
     const { data: session } = useSession();
     const currentUser = session?.user;
 
+
+    const photoQuery = query.photo;
+
+    const initialIndex = photoQuery ? +photoQuery - 1 : 0;
+
+
+    const [currentIndex, setCurrentIndex] = useState(initialIndex);
+
     const [likes, setLikes] = useState<any[]>(initialPost?.likes || []);
     const [shares, setShares] = useState<any[]>(initialPost?.shares || []);
     const [comments, setComments] = useState<any[]>(initialPost?.comments || []);
 
-    // 2. DERIVED STATE: These automatically recalculate whenever the slider (currentIndex) changes!
     const currentPhotoLikes = likes.filter((l: any) => l.photoIndex === currentIndex);
     const currentPhotoShares = shares.filter((s: any) => s.photoIndex === currentIndex);
     const currentPhotoComments = comments.filter((c: any) => c.photoIndex === currentIndex);
 
-    // 3. THE MAGIC: Check if the logged-in user is inside the current photo's likes array.
-    // If they liked it yesterday, this will instantly be TRUE when the modal opens!
     const isLiked = currentPhotoLikes.some((l: any) => l.userId === currentUser?.id);
 
-    // 4. Get the exact counts for the current photo
     const likeCount = currentPhotoLikes.length;
     const shareCount = currentPhotoShares.length;
     const commentCount = currentPhotoComments.length;
 
-    // Ref for the debounced Like button
     const likeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
 
@@ -61,26 +64,21 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
     const handleLike = () => {
         if (!post?.id || !currentUser) return;
 
-        // 1. OPTIMISTIC UI: Update the 'likes' array instantly for THIS specific photo
         if (isLiked) {
-            // UNLIKE: Remove the user's like for the current photo
             setLikes((prev: any[]) => prev.filter(l => !(l.userId === currentUser.id && l.photoIndex === currentIndex)));
         } else {
-            // LIKE: Add a fake like object for the current photo
             setLikes((prev: any[]) => [
                 ...prev,
                 { id: `temp-like-${Date.now()}`, userId: currentUser.id, photoIndex: currentIndex }
             ]);
         }
 
-        // 2. DEBOUNCE LOGIC
         if (likeTimeoutRef.current) {
             clearTimeout(likeTimeoutRef.current);
         }
 
         likeTimeoutRef.current = setTimeout(async () => {
             try {
-                // 3. Send the exact photoIndex to the backend!
                 await axios.post("/api/likes", {
                     postId: post.id,
                     photoIndex: currentIndex
@@ -88,12 +86,9 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
             } catch (error) {
                 console.error("Failed to sync like with server");
 
-                // 4. FALLBACK: If the server fails, revert the array change
                 if (isLiked) {
-                    // It was originally liked, we tried to unlike, but it failed. Add it back.
                     setLikes((prev: any[]) => [...prev, { id: `temp-like-${Date.now()}`, userId: currentUser.id, photoIndex: currentIndex }]);
                 } else {
-                    // It was originally unliked, we tried to like, but it failed. Remove it.
                     setLikes((prev: any[]) => prev.filter(l => !(l.userId === currentUser.id && l.photoIndex === currentIndex)));
                 }
             }
@@ -105,23 +100,19 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
 
         setIsSharing(true);
 
-        // 1. OPTIMISTIC UI: Add a temporary share object to the array for THIS photo
         const tempShare = { id: `temp-share-${Date.now()}`, userId: currentUser.id, photoIndex: currentIndex };
         setShares((prev: any[]) => [...prev, tempShare]);
 
         try {
-            // 2. Send the exact photoIndex to the backend!
             await axios.post("/api/shares", {
                 postId: post.id,
                 photoIndex: currentIndex
             });
 
-            // 3. Copy the link WITH the specific photo parameter!
             navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}?photo=${currentIndex + 1}`);
 
         } catch (error) {
             console.error("Failed to share");
-            // FALLBACK: Remove the temporary share if the database fails
             setShares((prev: any[]) => prev.filter(s => s.id !== tempShare.id));
         } finally {
             setIsSharing(false);
@@ -143,12 +134,6 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
 
     const hasMultipleImages = images.length > 1;
 
-    const photoQuery = query.photo;
-
-    const initialIndex = photoQuery ? +photoQuery - 1 : 0;
-
-
-    const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
     const nextImage = () => {
         if (currentIndex < images.length - 1) {
