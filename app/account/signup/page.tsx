@@ -13,7 +13,7 @@ import { signIn, signOut, useSession } from "next-auth/react";
 import GoogleIcon from "public/icons/google.svg"
 import { BsCameraFill } from "react-icons/bs";
 import axios from "axios";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export default function Page() {
     const [isLoad, setIsLoad] = useState(false);
@@ -22,6 +22,7 @@ export default function Page() {
     const [step, setStep] = useState(1);
     const [preview, setPreview] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
+    const searchParams = useSearchParams();
 
     const { data: session, status } = useSession();
 
@@ -57,20 +58,28 @@ export default function Page() {
     })
 
     useEffect(() => {
-        if (status === "authenticated" && session?.user && step === 1) {
+    const googleEmail = searchParams.get("email");
+    const googleName = searchParams.get("name");
+    const googleImg = searchParams.get("image");
 
-            const nameParts = session.user.name?.split(" ") || [];
-            const firstName = nameParts[0] || "";
-            const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
-
-            setValue("firstName", firstName);
-            setValue("lastName", lastName);
-            if (session.user.email) {
-                setValue("email", session.user.email);
-            }
-            setSelectedOption("google");
-        }
-    }, [session, status, setValue]);
+    if (googleEmail && step === 1) {
+        // Auto-fill form and skip to Step 2 instantly
+        const nameParts = googleName?.split(" ") || [];
+        setValue("firstName", nameParts[0] || "");
+        setValue("lastName", nameParts.length > 1 ? nameParts.slice(1).join(" ") : "");
+        setValue("email", googleEmail);
+        
+        setSelectedOption("google");
+        setStep(2); 
+    } else if (status === "authenticated" && session?.user && step === 1) {
+        // Fallback for existing sessions (if any)
+        const nameParts = session.user.name?.split(" ") || [];
+        setValue("firstName", nameParts[0] || "");
+        setValue("lastName", nameParts.length > 1 ? nameParts.slice(1).join(" ") : "");
+        if (session.user.email) setValue("email", session.user.email);
+        setSelectedOption("google");
+    }
+}, [searchParams, status, session, setValue, step]);
 
 
     const handleNextStep = async () => {

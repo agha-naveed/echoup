@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form"
 import { GoMail } from "react-icons/go";
 import { LuLockKeyhole } from "react-icons/lu";
-import { signIn, useSession } from "next-auth/react"; // NextAuth signIn handles everything!
+import { createClient } from '@/utils/supabase/client'
 import { redirect, useRouter } from "next/navigation";
 import GoogleIcon from "public/icons/google.svg"
 
@@ -16,14 +16,7 @@ type FormValues = {
 }
 
 export default function LoginPage() {
-    const { data: session } = useSession();
     const router = useRouter();
-
-    useEffect(() => {
-        if (session) {
-            redirect("/")
-        }
-    }, [session])
 
     const { register, handleSubmit, formState: { errors } } = useForm<FormValues>();
 
@@ -35,31 +28,17 @@ export default function LoginPage() {
         setIsLoad(true)
     }, [])
 
-    const onSubmit = handleSubmit(async (data) => {
-        setIsProcessing(true);
-        setLoginError(null);
 
-        try {
-            const result = await signIn("credentials", {
-                identifier: data.identifier,
-                password: data.password,
-                redirect: false,
-            });
-
-            console.log(result)
-            if (result?.error) {
-                setLoginError(result.error);
-            } else {
-                router.push("/");
-                router.refresh();
-            }
-        } catch (error) {
-            console.error("Login failed:", error);
-            setLoginError("Something went wrong. Please try again.");
-        } finally {
-            setIsProcessing(false);
-        }
-    })
+    const handleGoogleLogin = async () => {
+        const supabase = createClient();
+        await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                // Point this to the route we just made!
+                redirectTo: `${window.location.origin}/auth/callback`,
+            },
+        });
+    };
 
     return (
         <div className={`container mx-auto h-full`}>
@@ -77,7 +56,7 @@ export default function LoginPage() {
 
                 {/* Right Side Form */}
                 <div>
-                    <form onSubmit={onSubmit} className="shadow-[0px_2px_25px_#8b8b8b1c] bg-dark-clr grid gap-4 md:px-8 md:py-8 px-5 py-6 rounded-xl md:w-[430px] w-full">
+                    <form onSubmit={() => {}} className="shadow-[0px_2px_25px_#8b8b8b1c] bg-dark-clr grid gap-4 md:px-8 md:py-8 px-5 py-6 rounded-xl md:w-[430px] w-full">
                         <div className="flex items-center gap-3 select-none">
                             <Image src={logo} alt="logo" className="md:w-[35px] w-[30px]" />
                             <h4 className="md:text-[22px] text-xl font-medium">Echo Up</h4>
@@ -145,7 +124,7 @@ export default function LoginPage() {
 
                     <button
                         type="button"
-                        onClick={() => signIn("google")}
+                        onClick={() => handleGoogleLogin}
                         className="border border-white/20 flex items-center py-[10px] w-full justify-center gap-3 rounded-lg cursor-pointer transition-all hover:bg-white hover:text-black"
                         title="Sign in with Google"
                     >
