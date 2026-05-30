@@ -1,28 +1,57 @@
-import { getToken } from "next-auth/jwt";
-import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse, type NextRequest } from 'next/server'
 
-export async function proxy(req: NextRequest) {
-    const { pathname } = req.nextUrl;
+export async function proxy(request: NextRequest) {
+    let supabaseResponse = NextResponse.next({ request });
 
-    if (pathname.startsWith("/api/auth")) {
-        return NextResponse.next();
+    const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: {
+                getAll() {
+                    return request.cookies.getAll()
+                },
+                setAll(cookiesToSet) {
+                    cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+                    supabaseResponse = NextResponse.next({ request })
+                    cookiesToSet.forEach(({ name, value, options }) =>
+                        supabaseResponse.cookies.set(name, value, options)
+                    )
+                },
+            },
+        }
+    )
+
+    const { data: { user } } = await supabase.auth.getUser();
+    const { pathname } = request.nextUrl;
+
+    // Standard public paths
+    const publicPaths = [
+        "/account", 
+        "/account/signup", 
+        "/auth/callback", 
+        "/favicon.ico"
+    ];
+    
+    // Check if it's a standard public path OR a user profile page (starts with /@)
+    const isPublicPath = publicPaths.some((path) => pathname.startsWith(path)) || pathname.startsWith("/@");
+
+    // If no user and route is private, redirect to login
+    if (!user && !isPublicPath) {
+        return NextResponse.redirect(new URL('/account', request.url));
     }
 
-    const publicPaths = ["/account", "/api/account/login", "/api/account/signup", "/api/account/signup/[email]", "/post", "/favicon.ico"];
-    if (publicPaths.some((path) => pathname.startsWith(path))) {
-        return NextResponse.next();
+    // If logged in and on the login page, skip to feed
+    if (user && pathname === "/account") {
+        return NextResponse.redirect(new URL('/post', request.url));
     }
 
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-
-    if (!token) {
-        return NextResponse.redirect(new URL("/account", req.url));
-    }
-
-    return NextResponse.next();
+    return supabaseResponse;
 }
 
-
 export const config = {
-    matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+    matcher: [
+        "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    ],
 };

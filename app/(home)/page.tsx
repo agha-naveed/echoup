@@ -1,8 +1,6 @@
 import CreatePost from "@/components/CreatePost";
 import FeedPage from "@/components/Feed";
-import db from "@/lib/db";
-import { desc } from "drizzle-orm";
-import { posts } from "@/db/schema/post";
+import { posts } from "@/types/database";
 
 export default async function page() {
   const initialPosts = await db.query.posts.findMany({
