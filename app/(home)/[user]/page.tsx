@@ -62,10 +62,10 @@ const UserProfilePage = async ({ params }: { params: { user: string } }) => {
     const fullName = `${profile.first_name} ${profile.last_name || ""}`.trim();
     
     // Fallback DP if they haven't uploaded one
-    const profileImageUrl = profile.profile_image || "https://ntvb.tmsimg.com/assets/assets/487578_v9_bb.jpg?w=360&h=480";
+    const profileImageUrl = profile.profile_image || "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png";
 
     return (
-        <div className="min-h-screen container mx-auto w-fit max-w-[730px]">
+        <div className="min-h-screen container mx-auto w-full">
             <div className="relative">
                 <div className="w-full flex max-w-[1500px] sm:h-[270px] h-[37vw] object-cover rounded-xl overflow-hidden bg-dark-clr">
                     <Image src={"https://static.vecteezy.com/system/resources/thumbnails/033/252/051/small/space-for-text-on-textured-background-surrounded-by-a-lion-in-watercolor-style-background-image-ai-generated-photo.jpg"} width={1000} height={1000} alt="Cover Page" className="w-full object-cover" />

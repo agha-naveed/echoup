@@ -53,7 +53,7 @@ export default async function Page() {
   }
 
   return (
-    <div className="w-full flex flex-col gap-5 min-h-screen">
+    <div className="w-full xl:px-10 md:px-7 flex flex-col gap-5 min-h-screen">
       <CreatePost />
       {/* Pass the fetched data down to the client component. Default to an empty array if undefined */}
       <FeedPage initialPosts={initialPosts || []} />
