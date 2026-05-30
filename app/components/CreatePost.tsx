@@ -1,17 +1,20 @@
 "use client"
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { TbPhoto } from "react-icons/tb";
 import { MdOutlineOndemandVideo } from "react-icons/md";
 import { FiFileText } from "react-icons/fi";
-import { IoMdClose } from "react-icons/io"; // Added for the 'Remove Image' button
+import { IoMdClose } from "react-icons/io";
 import Image from "next/image";
-import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
+import { createClient } from "@/utils/supabase/client";
 
 const CreatePost = () => {
-    const { data: session } = useSession();
     const router = useRouter();
+    const supabase = createClient();
+    
+    // Replace NextAuth session with Supabase user state
+    const [currentUser, setCurrentUser] = useState<any>(null);
 
     const [isFocus, setIsFocus] = useState(false);
     const [isEmpty, setIsEmpty] = useState(true);
@@ -24,19 +27,33 @@ const CreatePost = () => {
     const contentRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Fetch the active user on mount
+    useEffect(() => {
+        const fetchUser = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data: profile } = await supabase
+                    .from("users")
+                    .select("*")
+                    .eq("id", user.id)
+                    .single();
+                setCurrentUser(profile);
+            }
+        };
+        fetchUser();
+    }, [supabase]);
+
     const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
         const text = e.currentTarget.textContent?.trim() || "";
         if (selectedFiles.length > 0) {
             setIsEmpty(false);
-        }
-        else {
+        } else {
             setIsEmpty(!text);
         }
         if (errorMsg) setErrorMsg(null);
     };
 
     const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-
         if (!e.target.files) return;
 
         setIsEmpty(false)
@@ -68,7 +85,7 @@ const CreatePost = () => {
     const handlePostSubmit = async () => {
         const text = contentRef.current?.innerText.trim() || "";
 
-        if (!text && selectedFiles.length === 0) return;
+        if ((!text && selectedFiles.length === 0) || !currentUser) return;
 
         setIsPosting(true);
         setErrorMsg(null);
@@ -76,24 +93,33 @@ const CreatePost = () => {
         try {
             let uploadedImageUrls: string[] = [];
 
+            // 1. Upload images to Cloudinary
             if (selectedFiles.length > 0) {
-                console.log("yes")
-                const getImagesUrl = selectedFiles.map(async (file, idx) => {
+                const getImagesUrl = selectedFiles.map(async (file) => {
                     const formData = new FormData();
                     formData.append("file", file);
                     formData.append("upload_preset", "my-images");
-                    const response = (await axios.post(`https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
-                        formData));
-                    return await response.data.secure_url
-                })
-                uploadedImageUrls = await Promise.all(getImagesUrl)
+                    const response = await axios.post(
+                        `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
+                        formData
+                    );
+                    return response.data.secure_url;
+                });
+                uploadedImageUrls = await Promise.all(getImagesUrl);
             }
 
-            await axios.post("/api/posts", {
-                content: text,
-                imageUrls: uploadedImageUrls
-            });
+            // 2. Insert Post directly into Supabase PostgreSQL
+            const { error: insertError } = await supabase
+                .from("posts")
+                .insert({
+                    content: text,
+                    image_url: uploadedImageUrls, // Note: using snake_case to match our DB schema!
+                    author_id: currentUser.id
+                });
 
+            if (insertError) throw insertError;
+
+            // 3. Reset UI state on success
             if (contentRef.current) contentRef.current.innerText = "";
             setIsEmpty(true);
             setSelectedFiles([]);
@@ -102,11 +128,7 @@ const CreatePost = () => {
 
         } catch (error: any) {
             console.error("Post failed:", error);
-            if (error.response?.data?.error) {
-                setErrorMsg(error.response.data.error);
-            } else {
-                setErrorMsg("Failed to post. Please try again.");
-            }
+            setErrorMsg("Failed to post. Please try again.");
         } finally {
             setIsPosting(false);
         }
@@ -131,14 +153,13 @@ const CreatePost = () => {
                 </div>
             )}
             <div>
-
                 <div className="flex gap-3 w-full">
                     <div className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden mt-2 border border-main-border">
-                        {session?.user?.image ? (
-                            <Image src={session.user.image} alt="Profile" width={100} height={100} className="w-full h-full object-cover" />
+                        {currentUser?.profile_image ? (
+                            <Image src={currentUser.profile_image} alt="Profile" width={100} height={100} className="w-full h-full object-cover" />
                         ) : (
                             <div className="w-full h-full bg-main-blue text-white flex items-center justify-center font-bold text-lg uppercase">
-                                {session?.user?.name?.charAt(0) || "U"}
+                                {currentUser?.first_name?.charAt(0) || "U"}
                             </div>
                         )}
                     </div>
@@ -177,7 +198,6 @@ const CreatePost = () => {
 
             <div className="flex items-center justify-between pt-1">
                 <div className="flex gap-1 items-center">
-
                     <input
                         type="file"
                         multiple
@@ -206,7 +226,8 @@ const CreatePost = () => {
                 <button
                     type="button"
                     onClick={handlePostSubmit}
-                    className={`btn-gradient ${isEmpty ? "opacity-50 cursor-not-allowed!" : "cursor-pointer"} flex items-center justify-center min-w-[70px]`}
+                    disabled={isEmpty || isPosting || !currentUser}
+                    className={`btn-gradient ${isEmpty || !currentUser ? "opacity-50 cursor-not-allowed!" : "cursor-pointer"} flex items-center justify-center min-w-[70px]`}
                 >
                     {isPosting ? (
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

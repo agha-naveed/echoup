@@ -4,7 +4,7 @@ import Image from "next/image"
 import Link from "next/link";
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { signUpFormSchema, type SignUpFormValues } from "@/schema/user";
+import { signUpFormSchema, type SignUpFormValues } from "@/db/schema/user";
 import { createClient } from "@/utils/supabase/client";
 import { GoMail } from "react-icons/go";
 import { LuLockKeyhole } from "react-icons/lu";
@@ -109,13 +109,39 @@ function SignupForm() {
     const currentYear = new Date().getFullYear();
     const years = Array.from({ length: currentYear - startYear + 1 }, (_, i) => currentYear - i);
 
-    const onSubmit = handleSubmit(async (data) => {
+// 1. The Traffic Cop: Bypasses Zod for Google Users
+    const handleFinalSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const data = getValues();
+
+        if (authUser) {
+            // Completely ignore Zod strictness for Google users!
+            if (!data.username || data.username.length < 3) {
+                setError("username", { type: "manual", message: "Username must be at least 3 characters." });
+                return;
+            }
+            
+            // Proceed with the raw data
+            await processSignup(data);
+        } else {
+            // For regular email users, let Zod validate all 3 steps
+            handleSubmit(processSignup)(e);
+        }
+    };
+
+    // 2. The Engine: Processes the actual database insertion
+    const processSignup = async (data: any) => {
         setIsProcessing(true);
-        const actualMonth = (parseInt(data.month) + 1).toString();
-        const formattedDate = `${data.year}-${actualMonth.padStart(2, '0')}-${data.date.padStart(2, '0')}`;
 
         try {
-            // 1. Check if username is taken directly in Supabase
+            // Safely format the date ONLY if all fields exist
+            let formattedDate = null;
+            if (data.year && data.month && data.date) {
+                const actualMonth = (parseInt(data.month as string) + 1).toString();
+                formattedDate = `${data.year}-${actualMonth.padStart(2, '0')}-${(data.date as string).padStart(2, '0')}`;
+            }
+
+            // 1. Check if username is taken
             const { data: existingUser } = await supabase
                 .from("users")
                 .select("username")
@@ -145,17 +171,31 @@ function SignupForm() {
             // 3. Save / Update User
             if (authUser) {
                 // Update existing Google User
-                const { error: updateError } = await supabase
+                const { data: updatedData, error: updateError } = await supabase
                     .from("users")
                     .update({
                         username: data.username,
                         profile_image: finalProfileImageUrl,
-                        ...(data.gender && { gender: data.gender }),
-                        ...(data.year && { date_of_birth: formattedDate })
                     })
-                    .eq("id", authUser.id);
+                    .eq("id", authUser.id)
+                    .select(); // We use select() to check if the update actually found a row!
 
                 if (updateError) throw updateError;
+
+                // BACKUP FAILSAFE: If the Postgres Trigger failed to create the Google user, 
+                // the update above will silently update 0 rows. This catches that and forces an insert!
+                if (updatedData && updatedData.length === 0) {
+                    const { error: insertError } = await supabase.from("users").insert({
+                        id: authUser.id,
+                        email: authUser.email,
+                        username: data.username,
+                        profile_image: finalProfileImageUrl,
+                        first_name: authUser.user_metadata?.full_name?.split(" ")[0] || "User",
+                        last_name: authUser.user_metadata?.full_name?.split(" ")[1] || "",
+                    });
+                    if (insertError) throw insertError;
+                }
+
             } else {
                 // Register Brand New Email/Password User
                 const { data: authData, error: signUpError } = await supabase.auth.signUp({
@@ -171,15 +211,14 @@ function SignupForm() {
 
                 if (signUpError) throw signUpError;
 
-                // Wait a moment for the Postgres trigger to create the row, then update it
                 if (authData.user) {
                     const { error: updateError } = await supabase
                         .from("users")
                         .update({
                             username: data.username,
                             profile_image: finalProfileImageUrl,
-                            gender: data.gender,
-                            date_of_birth: formattedDate
+                            ...(data.gender && { gender: data.gender }),
+                            ...(formattedDate && { date_of_birth: formattedDate })
                         })
                         .eq("id", authData.user.id);
                     
@@ -188,7 +227,7 @@ function SignupForm() {
             }
 
             // 4. Success -> Redirect to app
-            router.push("/post");
+            router.push("/");
 
         } catch (error) {
             console.error(error);
@@ -196,7 +235,8 @@ function SignupForm() {
         } finally {
             setIsProcessing(false);
         }
-    });
+    };
+
 
     return (
         <div className="container mx-auto h-full p-5 overflow-hidden">
@@ -215,7 +255,7 @@ function SignupForm() {
 
                 <div className="w-full overflow-hidden max-w-3xl pb-10">
                     <form
-                        onSubmit={onSubmit}
+                        onSubmit={handleFinalSubmit}
                         className="flex items-start transition-transform duration-500 ease-in-out w-full"
                         style={{ transform: `translateX(-${(step - 1) * 100}%)` }}
                     >

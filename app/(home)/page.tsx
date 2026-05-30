@@ -1,50 +1,62 @@
 import CreatePost from "@/components/CreatePost";
 import FeedPage from "@/components/Feed";
-import { posts } from "@/types/database";
+import { createClient } from "@/utils/supabase/server";
 
-export default async function page() {
-  const initialPosts = await db.query.posts.findMany({
-    orderBy: [desc(posts.createdAt)],
-    limit: 20,
+export default async function Page() {
+  const supabase = await createClient();
 
-    columns: {
-      id: true,
-      content: true,
-      createdAt: true,
-      imageUrl: true
-    },
+  // Fetch the latest 20 posts with all relational data
+  const { data: initialPosts, error } = await supabase
+    .from("posts")
+    .select(`
+      id,
+      content,
+      created_at,
+      image_url,
+      author:users ( 
+        username, 
+        first_name, 
+        last_name, 
+        profile_image 
+      ),
+      likes ( 
+        id, 
+        user_id, 
+        photo_index 
+      ),
+      shares ( 
+        id, 
+        user_id, 
+        photo_index 
+      ),
+      comments (
+        id,
+        content,
+        created_at,
+        photo_index,
+        author:users ( 
+          username, 
+          first_name, 
+          last_name, 
+          profile_image 
+        )
+      )
+    `)
+    // 1. Order the main posts by newest first
+    .order("created_at", { ascending: false })
+    // 2. Order the nested comments by newest first
+    .order("created_at", { foreignTable: "comments", ascending: false })
+    .limit(20);
 
-    with: {
-      author: {
-        columns: {
-          username: true,
-          firstName: true,
-          lastName: true,
-          profileImage: true,
-        }
-      },
-      likes: true,
-      comments: {
-        with: {
-          author: {
-            columns: {
-              username: true,
-              firstName: true,
-              lastName: true,
-              profileImage: true
-            }
-          }
-        },
-        orderBy: (comments, { desc }) => [desc(comments.createdAt)]
-      },
-      shares: true
-    },
-  });
+  if (error) {
+    console.error("Failed to fetch posts:", error);
+  }
 
   return (
     <div className="w-full flex flex-col gap-5 min-h-screen">
       <CreatePost />
-      <FeedPage initialPosts={initialPosts} />
+      {/* Pass the fetched data down to the client component. Default to an empty array if undefined */}
+      <FeedPage initialPosts={initialPosts || []} />
     </div>
-  )
+  );
 }

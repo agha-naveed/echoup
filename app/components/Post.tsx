@@ -3,49 +3,66 @@ import Image from 'next/image'
 import { GoHeart, GoHeartFill, GoComment } from "react-icons/go";
 import { RiShareForward2Line } from "react-icons/ri";
 import { HiOutlineDotsHorizontal } from "react-icons/hi";
-import { PostType } from '../types/post';
+import { PostType } from '../types/post'; // Note: You may need to update this type to match Supabase snake_case!
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
 import { formatDistanceToNowStrict } from 'date-fns';
-import axios from 'axios';
+import { createClient } from '@/utils/supabase/client';
 
 type Props = {
-    post: PostType
+    post: any // Temporarily using 'any' to avoid TS errors during the snake_case transition
 }
 
 export default function Post({ post }: Props) {
-    const { data: session } = useSession();
-    const currentUser = session?.user;
+    const supabase = createClient();
+    const [currentUser, setCurrentUser] = useState<any>(null);
 
-    const images = post.imageUrl || [];
+    // Fetch the active Supabase user on mount
+    useEffect(() => {
+        const fetchUser = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                // Fetch their actual profile data from public.users
+                const { data: profile } = await supabase
+                    .from("users")
+                    .select("*")
+                    .eq("id", user.id)
+                    .single();
+                setCurrentUser(profile);
+            }
+        };
+        fetchUser();
+    }, [supabase]);
+
+    // Safely handle both Drizzle camelCase and Supabase snake_case formatting
+    const images = post.imageUrl || post.image_url || [];
     const imageCount = images.length;
+    const createdAt = post.createdAt || post.created_at;
+    const authorFirstName = post.author?.firstName || post.author?.first_name;
+    const authorLastName = post.author?.lastName || post.author?.last_name;
+    const authorProfileImage = post.author?.profileImage || post.author?.profile_image;
 
     // ==========================================
     // ENGAGEMENT & COMMENT STATE
     // ==========================================
 
-    // FIX: Removed the extra brackets so it correctly initializes the array
-    const [likes, setLikes] = useState<any[]>([post?.likes]);
+    const [likes, setLikes] = useState<any[]>(post?.likes || []);
     const [comments, setComments] = useState<any[]>(post?.comments || []);
-
-    // Pagination state for comments (Start with 1)
     const [visibleCount, setVisibleCount] = useState(1);
 
-    // 1. Get ONLY the general collage comments (photoIndex is null)
-    const generalComments = comments.filter((c: any) => c.photoIndex === null);
+    // 1. Get ONLY the general collage comments (safely checking both casing styles)
+    const generalComments = comments.filter((c: any) => c.photoIndex === null || c.photo_index === null);
 
     // 2. Slice the array to only show the allowed amount
     const visibleComments = generalComments.slice(0, visibleCount);
 
     // 3. Derived state for the buttons
-    const generalLikes = likes.filter((l: any) => l.photoIndex === null);
-    const isLiked = generalLikes.some((l: any) => l.userId === currentUser?.id);
+    const generalLikes = likes.filter((l: any) => l.photoIndex === null || l.photo_index === null);
+    const isLiked = generalLikes.some((l: any) => l.userId === currentUser?.id || l.user_id === currentUser?.id);
 
-    // Feed usually shows TOTAL counts across all photos
     const totalLikes = likes.length;
     const totalComments = comments.length;
-    const totalShares = 0;
+    const totalShares = post?.shares?.length || 0;
 
     const likeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -54,18 +71,20 @@ export default function Post({ post }: Props) {
     };
 
     // ==========================================
-    // FEED LIKE LOGIC (Optimistic UI + Debounce)
+    // FEED LIKE LOGIC (Optimistic UI + Debounce + Supabase)
     // ==========================================
     const handleLike = () => {
         if (!post?.id || !currentUser) return;
 
-        // 1. Optimistic Update for the general feed (photoIndex: null)
-        if (isLiked) {
-            setLikes(prev => prev.filter(l => !(l.userId === currentUser.id && l.photoIndex === null)));
+        const wasLiked = isLiked;
+
+        // 1. Optimistic Update for the general feed
+        if (wasLiked) {
+            setLikes(prev => prev.filter(l => !((l.userId === currentUser.id || l.user_id === currentUser.id) && (l.photoIndex === null || l.photo_index === null))));
         } else {
             setLikes(prev => [
                 ...prev,
-                { id: `temp-like-${Date.now()}`, userId: currentUser.id, photoIndex: null }
+                { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: null }
             ]);
         }
 
@@ -74,22 +93,37 @@ export default function Post({ post }: Props) {
 
         likeTimeoutRef.current = setTimeout(async () => {
             try {
-                // Save it as a general post like (null)
-                await axios.post("/api/likes", {
-                    postId: post.id,
-                    photoIndex: null
-                });
+                if (wasLiked) {
+                    // Delete the like directly from Supabase
+                    await supabase
+                        .from('likes')
+                        .delete()
+                        .match({ post_id: post.id, user_id: currentUser.id })
+                        .is('photo_index', null);
+                } else {
+                    // Insert the like directly into Supabase
+                    await supabase
+                        .from('likes')
+                        .insert({
+                            post_id: post.id,
+                            user_id: currentUser.id,
+                            photo_index: null
+                        });
+                }
             } catch (error) {
                 console.error("Failed to sync like with server");
                 // Revert state on failure
-                if (isLiked) {
-                    setLikes(prev => [...prev, { id: `temp-like-${Date.now()}`, userId: currentUser.id, photoIndex: null }]);
+                if (wasLiked) {
+                    setLikes(prev => [...prev, { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: null }]);
                 } else {
-                    setLikes(prev => prev.filter(l => !(l.userId === currentUser.id && l.photoIndex === null)));
+                    setLikes(prev => prev.filter(l => !((l.userId === currentUser.id || l.user_id === currentUser.id) && (l.photoIndex === null || l.photo_index === null))));
                 }
             }
         }, 800);
     };
+
+    const [feedComment, setFeedComment] = useState("");
+    const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
     const handleFeedCommentSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -102,40 +136,38 @@ export default function Post({ post }: Props) {
         const tempComment = {
             id: `temp-comment-${Date.now()}`,
             content: text,
-            photoIndex: null, // Tagged as null so it shows up on the general feed!
-            createdAt: new Date().toISOString(),
+            photo_index: null, 
+            created_at: new Date().toISOString(),
             author: {
-                username: currentUser?.name?.replace(/\s+/g, '').toLowerCase() || "user",
-                firstName: currentUser?.name?.split(" ")[0] || "User",
-                lastName: currentUser?.name?.split(" ")[1] || "",
-                profileImage: currentUser?.image || null,
+                username: currentUser.username,
+                first_name: currentUser.first_name,
+                last_name: currentUser.last_name,
+                profile_image: currentUser.profile_image,
             }
         };
 
         // 2. Instantly push it to the top of the comments array
         setComments(prev => [tempComment, ...prev]);
-        setFeedComment(""); // Clear the input box instantly
+        setFeedComment("");
 
         try {
-            // 3. Save it to PostgreSQL in the background
-            await axios.post("/api/comments", {
-                postId: post.id,
-                content: text,
-                photoIndex: null // Make sure the database knows it's a general comment
-            });
+            // 3. Save it to PostgreSQL directly via Supabase Client
+            await supabase
+                .from('comments')
+                .insert({
+                    post_id: post.id,
+                    content: text,
+                    photo_index: null,
+                    author_id: currentUser.id
+                });
         } catch (error) {
             console.error("Failed to post comment");
-            // Fallback: remove the temporary comment if the server fails
             setComments(prev => prev.filter(c => c.id !== tempComment.id));
         } finally {
             setIsSubmittingComment(false);
         }
     };
 
-    const [feedComment, setFeedComment] = useState("");
-    const [isSubmittingComment, setIsSubmittingComment] = useState(false);
-
-    // Cleanup timeout on unmount
     useEffect(() => {
         return () => {
             if (likeTimeoutRef.current) clearTimeout(likeTimeoutRef.current);
@@ -151,6 +183,10 @@ export default function Post({ post }: Props) {
                 src={src}
                 alt={alt || "Post attachment"}
                 className={`w-full h-full object-cover ${cHeight ? `h-[${cHeight}]` : ''}`}
+                placeholder='blur'
+                loading='lazy'
+                fetchPriority='low'
+                blurDataURL={src}
                 width={width}
                 height={height}
             />
@@ -161,18 +197,18 @@ export default function Post({ post }: Props) {
         <div className='bg-primary rounded-2xl w-full h-fit border border-main-border shadow-lg overflow-hidden'>
             <div className='flex items-center justify-between px-5 py-4'>
                 <div className='flex items-center gap-3'>
-                    <Link href={`/${post.author?.username}`} className="min-w-[45.5px] w-[45.5px] h-[45.5px] rounded-full overflow-hidden border border-main-border">
-                        {post.author?.profileImage ? (
-                            <Image src={post.author.profileImage} alt="Profile" width={100} height={100} className="w-full h-full object-cover" />
+                    <Link href={`/@${post.author?.username}`} className="min-w-[45.5px] w-[45.5px] h-[45.5px] rounded-full overflow-hidden border border-main-border">
+                        {authorProfileImage ? (
+                            <Image src={authorProfileImage} alt="Profile" placeholder='blur' blurDataURL={authorProfileImage} width={100} height={100} className="w-full h-full object-cover" />
                         ) : (
                             <div className="w-full h-full bg-main-blue text-white flex items-center justify-center font-bold uppercase">
-                                {post.author?.firstName?.charAt(0) || "U"}
+                                {authorFirstName?.charAt(0) || "U"}
                             </div>
                         )}
                     </Link>
                     <div className='text-foreground flex flex-col'>
-                        <Link href={`/${post.author?.username}`} className='font-medium text-[17px] hover:underline'>{post.author?.firstName} {post.author?.lastName}</Link>
-                        <span className='text-[12px] text-foreground/70'>{post.createdAt.toString().substring(4, 15)}</span>
+                        <Link href={`/@${post.author?.username}`} className='font-medium text-[17px] hover:underline'>{authorFirstName} {authorLastName}</Link>
+                        {createdAt && <span suppressHydrationWarning className='text-[12px] text-foreground/70'>{new Date(createdAt).toString().substring(4, 15)}</span>}
                     </div>
                 </div>
                 <HiOutlineDotsHorizontal className='text-[22px] p-1.5 cursor-pointer w-9 h-9 transition-all hover:bg-dark-clr rounded-full text-foreground' />
@@ -189,32 +225,32 @@ export default function Post({ post }: Props) {
                     <div className='w-full border-y border-main-border bg-[#0a0a0a] max-h-150 overflow-hidden'>
                         {imageCount === 1 && (
                             <div className='w-full max-h-125 flex items-center justify-center'>
-                                <ImageTile src={images[0]} width={800} height={800} idx={0} />
+                                <ImageTile placeholder="blur" blurDataURL={images[0]} loading="lazy" fetchPriority="low" src={images[0]} width={800} height={800} idx={0} />
                             </div>
                         )}
                         {imageCount === 2 && (
                             <div className='grid grid-cols-2 gap-1 usm:h-75 h-55'>
-                                <ImageTile src={images[0]} idx={0} />
-                                <ImageTile src={images[1]} idx={1} />
+                                <ImageTile placeholder="blur" blurDataURL={images[0]} loading="lazy" fetchPriority="low" src={images[0]} idx={0} />
+                                <ImageTile placeholder="blur" blurDataURL={images[1]} loading="lazy" fetchPriority="low" src={images[1]} idx={1} />
                             </div>
                         )}
                         {imageCount === 3 && (
                             <div className='flex gap-1 sm:h-100 h-80'>
                                 <div className='usm:w-[65%] w-[60%] h-full'>
-                                    <ImageTile src={images[0]} idx={0} />
+                                    <ImageTile placeholder="blur" blurDataURL={images[0]} loading="lazy" fetchPriority="low" src={images[0]} idx={0} />
                                 </div>
                                 <div className='flex usm:w-[35%] w-[40%] flex-col gap-1 h-full'>
-                                    <ImageTile src={images[1]} idx={1} />
-                                    <ImageTile src={images[2]} idx={2} />
+                                    <ImageTile placeholder="blur" blurDataURL={images[1]} loading="lazy" fetchPriority="low" src={images[1]} idx={1} />
+                                    <ImageTile placeholder="blur" blurDataURL={images[2]} loading="lazy" fetchPriority="low" src={images[2]} idx={2} />
                                 </div>
                             </div>
                         )}
                         {imageCount >= 4 && (
                             <div className='grid grid-cols-2 gap-1 sm:h-[500px] usm:h-[350px] h-full xl:h-[550px]'>
-                                <ImageTile src={images[0]} idx={0} width={400} height={100} cHeight={"100%"} />
-                                <ImageTile src={images[1]} idx={1} width={400} height={100} cHeight={"100%"} />
-                                <ImageTile src={images[2]} idx={2} width={400} height={100} cHeight={"100%"} />
-                                <ImageTile src={images[3]} idx={3} width={400} height={100} cHeight={"100%"} />
+                                <ImageTile placeholder="blur" blurDataURL={images[0]} loading="lazy" fetchPriority="low" src={images[0]} idx={0} width={400} height={100} cHeight={"100%"} />
+                                <ImageTile placeholder="blur" blurDataURL={images[1]} loading="lazy" fetchPriority="low" src={images[1]} idx={1} width={400} height={100} cHeight={"100%"} />
+                                <ImageTile placeholder="blur" blurDataURL={images[2]} loading="lazy" fetchPriority="low" src={images[2]} idx={2} width={400} height={100} cHeight={"100%"} />
+                                <ImageTile placeholder="blur" blurDataURL={images[3]} loading="lazy" fetchPriority="low" src={images[3]} idx={3} width={400} height={100} cHeight={"100%"} />
                             </div>
                         )}
                     </div>
@@ -241,35 +277,42 @@ export default function Post({ post }: Props) {
             </div>
 
             {/* ========================================== */}
-            {/* NEW: PROGRESSIVE COMMENT SECTION */}
+            {/* PROGRESSIVE COMMENT SECTION */}
             {/* ========================================== */}
             {generalComments.length > 0 && (
                 <div className='px-5 pb-4 grid gap-3'>
-                    {visibleComments.map((comment: any) => (
-                        <div key={comment.id} className='flex items-start gap-2'>
-                            <Link href={`/${comment.author.username}`} className='min-w-8 h-8 rounded-full overflow-hidden border border-main-border shrink-0 mt-0.5'>
-                                {comment.author.profileImage ? (
-                                    <Image src={comment.author.profileImage} alt="DP" width={40} height={40} className="w-full h-full object-cover" />
-                                ) : (
-                                    <div className="w-full h-full bg-main-blue flex items-center justify-center text-white font-bold text-[12px] uppercase">
-                                        {comment.author.firstName?.charAt(0) || "U"}
-                                    </div>
-                                )}
-                            </Link>
+                    {visibleComments.map((comment: any) => {
+                        const commentFName = comment.author?.firstName || comment.author?.first_name;
+                        const commentLName = comment.author?.lastName || comment.author?.last_name;
+                        const commentDP = comment.author?.profileImage || comment.author?.profile_image;
+                        const commentTime = comment.createdAt || comment.created_at;
 
-                            <div className='grid gap-0.5 text-foreground text-[14px] bg-dark-clr/40 rounded-2xl rounded-tl-none py-2 px-3 w-fit'>
-                                <div className="flex items-center gap-2">
-                                    <Link href={`/${comment.author.username}`} className='font-bold text-[13px] hover:underline'>
-                                        {comment.author.firstName} {comment.author.lastName}
-                                    </Link>
-                                    <span className="text-[11px] text-gray-500">
-                                        {comment.createdAt ? formatDistanceToNowStrict(new Date(comment.createdAt), { addSuffix: true }) : ""}
-                                    </span>
+                        return (
+                            <div key={comment.id} className='flex items-start gap-2'>
+                                <Link href={`/@${comment.author?.username}`} className='min-w-8 h-8 rounded-full overflow-hidden border border-main-border shrink-0 mt-0.5'>
+                                    {commentDP ? (
+                                        <Image src={commentDP} alt="DP" width={40} height={40} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="w-full h-full bg-main-blue flex items-center justify-center text-white font-bold text-[12px] uppercase">
+                                            {commentFName?.charAt(0) || "U"}
+                                        </div>
+                                    )}
+                                </Link>
+
+                                <div className='grid gap-0.5 text-foreground text-[14px] bg-dark-clr/40 rounded-2xl rounded-tl-none py-2 px-3 w-fit'>
+                                    <div className="flex items-center gap-2">
+                                        <Link href={`/@${comment.author?.username}`} className='font-bold text-[13px] hover:underline'>
+                                            {commentFName} {commentLName}
+                                        </Link>
+                                        <span suppressHydrationWarning className="text-[11px] text-gray-500">
+                                            {commentTime ? formatDistanceToNowStrict(new Date(commentTime), { addSuffix: true }) : ""}
+                                        </span>
+                                    </div>
+                                    <span className='text-foreground whitespace-pre-wrap leading-tight'>{comment.content}</span>
                                 </div>
-                                <span className='text-foreground whitespace-pre-wrap leading-tight'>{comment.content}</span>
                             </div>
-                        </div>
-                    ))}
+                        )
+                    })}
 
                     {visibleCount < generalComments.length && (
                         <button
@@ -283,38 +326,35 @@ export default function Post({ post }: Props) {
             )}
 
             {/* ========================================== */}
-            {/* NEW: QUICK FEED COMMENT INPUT */}
+            {/* QUICK FEED COMMENT INPUT */}
             {/* ========================================== */}
             <div className='px-5 pb-4 pt-1'>
                 <form onSubmit={handleFeedCommentSubmit} className='flex items-center gap-3'>
 
-                    {/* Logged in User's Avatar */}
                     <div className='min-w-8 h-8 rounded-full overflow-hidden border border-main-border shrink-0'>
-                        {currentUser?.image ? (
-                            <Image src={currentUser.image} alt="DP" width={40} height={40} className="w-full h-full object-cover" />
+                        {currentUser?.profile_image ? (
+                            <Image src={currentUser.profile_image} placeholder='blur' blurDataURL={currentUser.profile_image} alt="DP" width={40} height={40} className="w-full h-full object-cover" />
                         ) : (
                             <div className="w-full h-full bg-main-blue flex items-center justify-center text-white font-bold text-[12px] uppercase">
-                                {currentUser?.name?.charAt(0) || "U"}
+                                {currentUser?.first_name?.charAt(0) || "U"}
                             </div>
                         )}
                     </div>
 
-                    {/* The Input Field */}
                     <div className='flex-1 bg-dark-clr/20 hover:bg-dark-clr/40 transition-colors rounded-full px-4 py-1.5 flex items-center border border-main-border focus-within:border-main-blue/50 focus-within:bg-dark-clr/40'>
                         <input
                             type="text"
                             placeholder="Add a comment..."
                             value={feedComment}
                             onChange={(e) => setFeedComment(e.target.value)}
-                            disabled={isSubmittingComment}
+                            disabled={isSubmittingComment || !currentUser}
                             className='bg-transparent border-none outline-none w-full text-[14px] text-foreground placeholder:text-gray-500 disabled:opacity-50'
                         />
 
-                        {/* Post Button (Only lights up when there is text!) */}
                         <button
                             type="submit"
-                            disabled={!feedComment.trim() || isSubmittingComment}
-                            className={`font-semibold text-[14px] ml-2 transition-colors ${!feedComment.trim() || isSubmittingComment
+                            disabled={!feedComment.trim() || isSubmittingComment || !currentUser}
+                            className={`font-semibold text-[14px] ml-2 transition-colors ${!feedComment.trim() || isSubmittingComment || !currentUser
                                 ? 'text-main-blue/50 cursor-default'
                                 : 'text-main-blue hover:text-white cursor-pointer'
                                 }`}

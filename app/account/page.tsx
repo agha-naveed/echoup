@@ -47,8 +47,7 @@ export default function LoginPage() {
                 return;
             }
 
-            // Success! Send them to the feed.
-            router.push("/post");
+            router.push("/");
 
         } catch (error) {
             console.error(error);

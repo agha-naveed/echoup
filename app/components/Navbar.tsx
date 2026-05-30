@@ -6,13 +6,34 @@ import { FaRegBell } from "react-icons/fa";
 import { useEffect, useRef, useState } from "react";
 import logo from '@/images/logo.png'
 import Link from "next/link";
-import { useSession } from "next-auth/react";
+import { createClient } from "@/utils/supabase/client";
 
 export default function Navbar() {
-    const { data: session } = useSession();
-
-    const [toggleSearch, setToggleSearch] = useState(false)
+    const [toggleSearch, setToggleSearch] = useState(false);
     const searchRef = useRef<HTMLDivElement | null>(null);
+    
+    // Supabase state instead of NextAuth session
+    const [userProfile, setUserProfile] = useState<any>(null);
+    const supabase = createClient();
+
+    useEffect(() => {
+        // Fetch the active user and their custom profile data
+        const fetchUser = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (user) {
+                const { data: profile } = await supabase
+                    .from("users")
+                    .select("first_name, username, profile_image")
+                    .eq("id", user.id)
+                    .single();
+                    
+                if (profile) setUserProfile(profile);
+            }
+        };
+
+        fetchUser();
+    }, [supabase]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent): void => {
@@ -83,10 +104,11 @@ export default function Navbar() {
                     </button>
                     <div className="h-[44px] border-r mx-1 border-r-main-border"></div>
 
-                    <div className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden cursor-pointer border border-main-border transition-all hover:border-main-blue">
-                        {session?.user?.image ? (
+                    {/* Updated Profile Link mapped to /@username */}
+                    <Link href={userProfile?.username ? `/@${userProfile.username}` : "#"} className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden cursor-pointer border border-main-border transition-all hover:border-main-blue">
+                        {userProfile?.profile_image ? (
                             <Image
-                                src={session.user.image}
+                                src={userProfile.profile_image}
                                 alt="Profile"
                                 width={200}
                                 height={200}
@@ -94,10 +116,10 @@ export default function Navbar() {
                             />
                         ) : (
                             <div className="w-full h-full bg-main-blue text-white flex items-center justify-center font-bold text-lg uppercase">
-                                {session?.user?.name?.charAt(0) || "U"}
+                                {userProfile?.first_name?.charAt(0) || "U"}
                             </div>
                         )}
-                    </div>
+                    </Link>
 
                 </div>
             </div>

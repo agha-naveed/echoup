@@ -8,47 +8,60 @@ import { CiCamera } from "react-icons/ci";
 import { PiGif } from "react-icons/pi";
 import { RiSendPlaneFill, RiShareForward2Line } from "react-icons/ri";
 import Link from "next/link";
-import { useSession } from "next-auth/react";
 import { formatDistanceToNowStrict } from "date-fns";
-import axios from "axios";
 import { GoComment, GoHeart, GoHeartFill } from "react-icons/go";
-
+import { createClient } from "@/utils/supabase/client";
 
 export default function ModelPostOpen({ initialPost, query }: { initialPost: any, query: any }) {
 
+    const supabase = createClient();
+    const [currentUser, setCurrentUser] = useState<any>(null);
 
-    const { data: session } = useSession();
-    const currentUser = session?.user;
-
+    // 1. Fetch the active Supabase user on mount
+    useEffect(() => {
+        const fetchUser = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data: profile } = await supabase
+                    .from("users")
+                    .select("*")
+                    .eq("id", user.id)
+                    .single();
+                setCurrentUser(profile);
+            }
+        };
+        fetchUser();
+    }, [supabase]);
 
     const photoQuery = query.photo;
-
     const initialIndex = photoQuery ? +photoQuery - 1 : 0;
-
-
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
+    const post = initialPost;
+    const postAuthorFName = post?.author?.firstName || post?.author?.first_name;
+    const postAuthorLName = post?.author?.lastName || post?.author?.last_name;
+    const postAuthorDP = post?.author?.profileImage || post?.author?.profile_image;
+    const postCreatedAt = post?.createdAt || post?.created_at;
+
+    // 2. Engagement State (checking both camelCase and snake_case properties safely)
     const [likes, setLikes] = useState<any[]>(initialPost?.likes || []);
     const [shares, setShares] = useState<any[]>(initialPost?.shares || []);
-    const [comments, setComments] = useState<any[]>(initialPost?.comments || []);
+    
+    // Using realComments to track the dynamic comment list
+    const [realComments, setRealComments] = useState<any[]>(post?.comments || []);
 
-    const currentPhotoLikes = likes.filter((l: any) => l.photoIndex === currentIndex);
-    const currentPhotoShares = shares.filter((s: any) => s.photoIndex === currentIndex);
-    const currentPhotoComments = comments.filter((c: any) => c.photoIndex === currentIndex);
+    const currentPhotoLikes = likes.filter((l: any) => (l.photoIndex ?? l.photo_index) === currentIndex);
+    const currentPhotoShares = shares.filter((s: any) => (s.photoIndex ?? s.photo_index) === currentIndex);
+    const currentPhotoComments = realComments.filter((c: any) => (c.photoIndex ?? c.photo_index) === currentIndex);
 
-    const isLiked = currentPhotoLikes.some((l: any) => l.userId === currentUser?.id);
+    const isLiked = currentPhotoLikes.some((l: any) => (l.userId ?? l.user_id) === currentUser?.id);
 
     const likeCount = currentPhotoLikes.length;
     const shareCount = currentPhotoShares.length;
     const commentCount = currentPhotoComments.length;
 
     const likeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-
     const [isSharing, setIsSharing] = useState(false);
-
-
-
     const [isEmpty, setIsEmpty] = useState(true);
     const [isFocus, setIsFocus] = useState(false);
     const [sortComment, setSortComment] = useState("new");
@@ -58,38 +71,43 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
     const navigate = useRouter();
     const pathname = usePathname();
 
-    const post = initialPost
-
+    // ================ Handlers ================
 
     const handleLike = () => {
         if (!post?.id || !currentUser) return;
+        
+        const wasLiked = isLiked;
 
-        if (isLiked) {
-            setLikes((prev: any[]) => prev.filter(l => !(l.userId === currentUser.id && l.photoIndex === currentIndex)));
+        if (wasLiked) {
+            setLikes((prev: any[]) => prev.filter(l => !((l.userId ?? l.user_id) === currentUser.id && (l.photoIndex ?? l.photo_index) === currentIndex)));
         } else {
             setLikes((prev: any[]) => [
                 ...prev,
-                { id: `temp-like-${Date.now()}`, userId: currentUser.id, photoIndex: currentIndex }
+                { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: currentIndex }
             ]);
         }
 
-        if (likeTimeoutRef.current) {
-            clearTimeout(likeTimeoutRef.current);
-        }
+        if (likeTimeoutRef.current) clearTimeout(likeTimeoutRef.current);
 
         likeTimeoutRef.current = setTimeout(async () => {
             try {
-                await axios.post("/api/likes", {
-                    postId: post.id,
-                    photoIndex: currentIndex
-                });
+                if (wasLiked) {
+                    await supabase.from("likes").delete()
+                        .match({ post_id: post.id, user_id: currentUser.id, photo_index: currentIndex });
+                } else {
+                    await supabase.from("likes").insert({
+                        post_id: post.id,
+                        user_id: currentUser.id,
+                        photo_index: currentIndex
+                    });
+                }
             } catch (error) {
                 console.error("Failed to sync like with server");
-
-                if (isLiked) {
-                    setLikes((prev: any[]) => [...prev, { id: `temp-like-${Date.now()}`, userId: currentUser.id, photoIndex: currentIndex }]);
+                // Revert on failure
+                if (wasLiked) {
+                    setLikes((prev: any[]) => [...prev, { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: currentIndex }]);
                 } else {
-                    setLikes((prev: any[]) => prev.filter(l => !(l.userId === currentUser.id && l.photoIndex === currentIndex)));
+                    setLikes((prev: any[]) => prev.filter(l => !((l.userId ?? l.user_id) === currentUser.id && (l.photoIndex ?? l.photo_index) === currentIndex)));
                 }
             }
         }, 800);
@@ -100,17 +118,17 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
 
         setIsSharing(true);
 
-        const tempShare = { id: `temp-share-${Date.now()}`, userId: currentUser.id, photoIndex: currentIndex };
+        const tempShare = { id: `temp-share-${Date.now()}`, user_id: currentUser.id, photo_index: currentIndex };
         setShares((prev: any[]) => [...prev, tempShare]);
 
         try {
-            await axios.post("/api/shares", {
-                postId: post.id,
-                photoIndex: currentIndex
+            await supabase.from("shares").insert({
+                post_id: post.id,
+                user_id: currentUser.id,
+                photo_index: currentIndex
             });
 
             navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}?photo=${currentIndex + 1}`);
-
         } catch (error) {
             console.error("Failed to share");
             setShares((prev: any[]) => prev.filter(s => s.id !== tempShare.id));
@@ -121,25 +139,19 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
 
     useEffect(() => {
         return () => {
-            if (likeTimeoutRef.current) {
-                clearTimeout(likeTimeoutRef.current);
-            }
+            if (likeTimeoutRef.current) clearTimeout(likeTimeoutRef.current);
         };
     }, []);
 
-
     // ================ Slider ================
 
-    const images = initialPost?.imageUrl || [];
-
+    const images = initialPost?.imageUrl || initialPost?.image_url || [];
     const hasMultipleImages = images.length > 1;
-
 
     const nextImage = () => {
         if (currentIndex < images.length - 1) {
             const newIndex = currentIndex + 1;
             setCurrentIndex(newIndex);
-
             window.history.replaceState(null, '', `${pathname}?photo=${newIndex + 1}`);
         }
     };
@@ -148,52 +160,52 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
         if (currentIndex > 0) {
             const newIndex = currentIndex - 1;
             setCurrentIndex(newIndex);
-
             window.history.replaceState(null, '', `${pathname}?photo=${newIndex + 1}`);
         }
     };
 
-    // ================ Slider Ended ================
-
-
-    const [realComments, setRealComments] = useState(post?.comments || []);
+    // ================ Comments ================
 
     const commentRef = useRef<HTMLDivElement>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handleCommentSubmit = async () => {
         const text = commentRef.current?.innerText.trim();
-        if (!text || isSubmitting || !post?.id) return;
+        if (!text || isSubmitting || !post?.id || !currentUser) return;
 
         setIsSubmitting(true);
 
         const temporaryComment = {
             id: `temp-${Date.now()}`,
             content: text,
-            createdAt: new Date().toISOString(),
+            photo_index: currentIndex,
+            created_at: new Date().toISOString(),
             author: {
-                username: currentUser?.name?.replace(/\s+/g, '').toLowerCase() || "user",
-                firstName: currentUser?.name?.split(" ")[0] || "User",
-                lastName: currentUser?.name?.split(" ")[1] || "",
-                profileImage: currentUser?.image || null,
+                username: currentUser.username,
+                first_name: currentUser.first_name,
+                last_name: currentUser.last_name,
+                profile_image: currentUser.profile_image,
             }
         };
 
+        // Optimistically update
+        setRealComments((prevComments: any) => [temporaryComment, ...(prevComments || [])]);
+        if (commentRef.current) commentRef.current.innerText = "";
+        setIsEmpty(true);
+
         try {
-            const addComment = await axios.post("/api/comments", {
-                postId: post.id,
+            const { error } = await supabase.from("comments").insert({
+                post_id: post.id,
                 content: text,
-                photoIndex: currentIndex
+                photo_index: currentIndex,
+                author_id: currentUser.id
             });
 
-            if (addComment.status == 200) {
-                setRealComments((prevComments: any) => [temporaryComment, ...(prevComments || [])]);
-                if (commentRef.current) commentRef.current.innerText = "";
-                setIsEmpty(true);
-            }
-
+            if (error) throw error;
         } catch (error) {
-            alert("Failed to add comment");
+            console.error("Failed to add comment");
+            // Remove optimistic comment on fail
+            setRealComments((prevComments: any) => prevComments.filter((c: any) => c.id !== temporaryComment.id));
         } finally {
             setIsSubmitting(false);
         }
@@ -203,7 +215,7 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
         if (window.history.length > 1) {
             navigate.back();
         } else {
-            navigate.push(`/${post?.author?.username || ""}`);
+            navigate.push(`/@${post?.author?.username || ""}`);
         }
     };
 
@@ -233,25 +245,24 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
             <div className="w-[70vw] h-full relative bg-black">
                 <div className="absolute p-3 z-20 modelpostopen-bg w-full flex items-center gap-2">
                     <IoMdCloseCircle onClick={handleBack} title="Close" className="text-[32px] cursor-pointer text-white hover:text-gray-300 transition" />
-                    <div className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden border border-white/20">
-                        {post?.author?.profileImage ? (
-                            <Image src={post.author.profileImage} alt="..." width={100} height={100} className="w-full h-full object-cover" />
+                    <Link href={`/@${post?.author?.username}`} className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden border border-white/20">
+                        {postAuthorDP ? (
+                            <Image src={postAuthorDP} alt="..." width={100} height={100} className="w-full h-full object-cover" />
                         ) : (
                             <div className="w-full h-full bg-main-blue flex items-center justify-center font-bold text-white uppercase">
-                                {post?.author?.firstName?.charAt(0) || "U"}
+                                {postAuthorFName?.charAt(0) || "U"}
                             </div>
                         )}
-                    </div>
+                    </Link>
                     <div className="grid ml-1.5 text-white">
-                        <span className="text-[22px] font-medium leading-tight">{post?.author?.firstName} {post?.author?.lastName}</span>
+                        <Link href={`/@${post?.author?.username}`} className="text-[22px] font-medium leading-tight hover:underline">{postAuthorFName} {postAuthorLName}</Link>
                         <span className="text-[12px] text-gray-300">
-                            {post?.createdAt ? formatDistanceToNowStrict(new Date(post.createdAt), { addSuffix: true }) : "Just now"}
+                            {postCreatedAt ? formatDistanceToNowStrict(new Date(postCreatedAt), { addSuffix: true }) : "Just now"}
                         </span>
                     </div>
                 </div>
 
                 <div className="w-full lg:w-[70vw] h-full relative bg-black flex items-center justify-center group/slider">
-
                     {images.length > 0 && (
                         <>
                             <div className="w-full h-full relative flex items-center justify-center">
@@ -271,7 +282,6 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                                     width={1200}
                                     height={1200}
                                 />
-
 
                                 {hasMultipleImages && (
                                     <>
@@ -307,28 +317,27 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                                     </>
                                 )}
                             </div>
-                        </>)}
+                        </>
+                    )}
                 </div>
-
             </div>
 
             <div className="w-[30vw] h-full bg-primary z-20 flex flex-col border-l border-main-border">
-
                 <div className="px-5 py-4">
                     <div className="flex gap-2">
-                        <Link href={`/${post?.author?.username}`} className="min-w-[45.5px] w-[45.5px] h-[45.5px] rounded-full overflow-hidden border border-main-border">
-                            {post?.author?.profileImage ? (
-                                <Image src={post.author.profileImage} alt="..." width={100} height={100} className="w-full h-full object-cover" />
+                        <Link href={`/@${post?.author?.username}`} className="min-w-[45.5px] w-[45.5px] h-[45.5px] rounded-full overflow-hidden border border-main-border">
+                            {postAuthorDP ? (
+                                <Image src={postAuthorDP} alt="..." width={100} height={100} className="w-full h-full object-cover" />
                             ) : (
                                 <div className="w-full h-full bg-main-blue flex items-center justify-center font-bold text-white uppercase">
-                                    {post?.author?.firstName?.charAt(0) || "U"}
+                                    {postAuthorFName?.charAt(0) || "U"}
                                 </div>
                             )}
                         </Link>
                         <div className="grid ml-1.5 text-foreground">
-                            <Link href={`/${post?.author?.username}`} className="text-[18px] font-medium hover:underline">{post?.author?.firstName} {post?.author?.lastName}</Link>
+                            <Link href={`/@${post?.author?.username}`} className="text-[18px] font-medium hover:underline">{postAuthorFName} {postAuthorLName}</Link>
                             <span className="text-[12px] text-gray-400">
-                                {post?.createdAt ? formatDistanceToNowStrict(new Date(post.createdAt), { addSuffix: true }) : ""}
+                                {postCreatedAt ? formatDistanceToNowStrict(new Date(postCreatedAt), { addSuffix: true }) : ""}
                             </span>
                         </div>
                     </div>
@@ -341,13 +350,11 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
 
                 {/* Engagement Buttons */}
                 <div className='px-5 py-3 flex items-center gap-4 text-foreground border-t border-main-border'>
-
                     {/* LIKE BUTTON */}
                     <button
                         onClick={handleLike}
                         className={`flex items-center gap-2 text-[16px] transition-all hover:bg-dark-clr/50 px-3 py-1.5 rounded-full ${isLiked ? 'text-red-500' : 'hover:text-red-500'}`}
                     >
-                        {/* If isLiked is true, show the filled red heart immediately! */}
                         {isLiked ? <GoHeartFill className="text-[22px]" /> : <GoHeart className="text-[22px]" />}
                         <span className='font-medium'>{likeCount}</span>
                     </button>
@@ -358,7 +365,6 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                         className='text-[16px] cursor-pointer flex items-center gap-2 transition-all hover:bg-dark-clr/50 hover:text-main-blue px-3 py-1.5 rounded-full'
                     >
                         <GoComment className="text-[20px]" />
-                        {/* Shows the exact comment count for THIS photo */}
                         <span className='font-medium'>{commentCount}</span>
                     </button>
 
@@ -368,7 +374,6 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                         className='flex items-center gap-2 text-[16px] cursor-pointer transition-all hover:bg-dark-clr/50 hover:text-green-500 px-3 py-1.5 rounded-full'
                     >
                         <RiShareForward2Line className="text-[22px]" />
-                        {/* Shows the exact share count for THIS photo */}
                         <span className='font-medium'>{shareCount}</span>
                     </button>
                 </div>
@@ -394,44 +399,53 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                             No comments yet. Be the first to reply!
                         </div>
                     ) : (
-                        realComments.map((comment: any) => (
-                            currentIndex == comment.photoIndex &&
-                            <div key={comment.id} className='flex items-start gap-2'>
+                        realComments.map((comment: any) => {
+                            const cPhotoIndex = comment.photoIndex ?? comment.photo_index;
+                            if (cPhotoIndex !== currentIndex) return null;
 
-                                <Link href={`/${comment.author.username}`} className='min-w-10 h-10 rounded-full overflow-hidden border border-main-border shrink-0'>
-                                    {comment.author.profileImage ? (
-                                        <Image src={comment?.author.profileImage} alt={`${comment?.author.firstName} ${comment?.author.lastName} Profile Picture`} width={100} height={100} className="w-full h-full object-cover" />
-                                    ) : (
-                                        <div className="w-full h-full bg-main-blue flex items-center justify-center text-white font-bold uppercase">
-                                            {comment.author.firstName?.charAt(0) || "U"}
+                            const cFName = comment.author?.firstName || comment.author?.first_name;
+                            const cLName = comment.author?.lastName || comment.author?.last_name;
+                            const cDP = comment.author?.profileImage || comment.author?.profile_image;
+                            const cTime = comment.createdAt || comment.created_at;
+
+                            return (
+                                <div key={comment.id} className='flex items-start gap-2'>
+                                    <Link href={`/@${comment.author.username}`} className='min-w-10 h-10 rounded-full overflow-hidden border border-main-border shrink-0'>
+                                        {cDP ? (
+                                            <Image src={cDP} alt={`${cFName} ${cLName} Profile Picture`} width={100} height={100} className="w-full h-full object-cover" />
+                                        ) : (
+                                            <div className="w-full h-full bg-main-blue flex items-center justify-center text-white font-bold uppercase">
+                                                {cFName?.charAt(0) || "U"}
+                                            </div>
+                                        )}
+                                    </Link>
+
+                                    <div className='grid gap-1 text-foreground text-[14px] bg-dark-clr/40 rounded-[12px] rounded-tl-none py-2 px-3'>
+                                        <div className="flex items-center gap-2">
+                                            <Link href={`/@${comment.author.username}`} className='font-bold w-fit text-[13px] hover:underline'>
+                                                {cFName} {cLName}
+                                            </Link>
+                                            <span className="text-[11px] text-gray-500">
+                                                {cTime ? formatDistanceToNowStrict(new Date(cTime), { addSuffix: true }) : ""}
+                                            </span>
                                         </div>
-                                    )}
-                                </Link>
-
-                                <div className='grid gap-1 text-foreground text-[14px] bg-dark-clr/40 rounded-[12px] rounded-tl-none py-2 px-3'>
-                                    <div className="flex items-center gap-2">
-                                        <Link href={`/${comment.author.username}`} className='font-bold w-fit text-[13px] hover:underline'>
-                                            {comment.author.firstName} {comment.author.lastName}
-                                        </Link>
-                                        <span className="text-[11px] text-gray-500">
-                                            {formatDistanceToNowStrict(new Date(comment.createdAt), { addSuffix: true })}
-                                        </span>
+                                        <span className='text-foreground whitespace-pre-wrap'>{comment.content}</span>
                                     </div>
-                                    <span className='text-foreground whitespace-pre-wrap'>{comment.content}</span>
                                 </div>
-                            </div>
-                        ))
+                            )
+                        })
                     )}
                 </div>
 
+                {/* Comment Input */}
                 <div className='p-4 border-t border-main-border mt-auto'>
                     <div className='flex items-start gap-2'>
                         <div className='min-w-10 h-10 rounded-full overflow-hidden border border-main-border shrink-0'>
-                            {currentUser?.image ? (
-                                <Image src={currentUser.image} alt="DP" width={100} height={100} className="w-full h-full object-cover" />
+                            {currentUser?.profile_image ? (
+                                <Image src={currentUser.profile_image} alt="DP" width={100} height={100} className="w-full h-full object-cover" />
                             ) : (
                                 <div className="w-full h-full bg-main-blue flex items-center justify-center font-bold text-white uppercase">
-                                    {currentUser?.name?.charAt(0) || "U"}
+                                    {currentUser?.first_name?.charAt(0) || "U"}
                                 </div>
                             )}
                         </div>
@@ -449,11 +463,11 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                                     role="textbox"
                                     contentEditable
                                     aria-multiline="true"
-                                    data-placeholder={`Commenting as ${currentUser?.name || "User"}...`}
+                                    data-placeholder={`Commenting as ${currentUser?.first_name || "User"}...`}
                                     onInput={handleInput}
                                     className={`editable-div ${isEmpty ? "is-empty" : ""} w-full max-h-[150px] ${isFocus ? "min-h-[100px]" : "min-h-[30px]"} overflow-y-auto resize-none p-1 pr-9 outline-none whitespace-pre-wrap wrap-break-words break-all select-text`}
                                 />
-                                <button onClick={handleCommentSubmit} className={`${isEmpty && "opacity-50 cursor-auto!"}  text-main-blue hover:bg-main-blue/10 transition-all cursor-pointer absolute right-0 bottom-0 p-1.5 rounded-full mb-0.5`} title='Send Message'>
+                                <button disabled={isSubmitting || !currentUser} onClick={handleCommentSubmit} className={`${(isEmpty || isSubmitting || !currentUser) && "opacity-50 cursor-auto!"}  text-main-blue hover:bg-main-blue/10 transition-all cursor-pointer absolute right-0 bottom-0 p-1.5 rounded-full mb-0.5`} title='Send Message'>
                                     <RiSendPlaneFill className='text-[20px] relative -left-px' />
                                 </button>
                             </div>
