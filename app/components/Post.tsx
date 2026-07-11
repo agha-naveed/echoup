@@ -48,6 +48,8 @@ export default function Post({ post }: Props) {
 
     const [likes, setLikes] = useState<any[]>(post?.likes || []);
     const [comments, setComments] = useState<any[]>(post?.comments || []);
+    
+    // Start by showing 1 comment
     const [visibleCount, setVisibleCount] = useState(1);
 
     // 1. Get ONLY the general collage comments (safely checking both casing styles)
@@ -65,10 +67,6 @@ export default function Post({ post }: Props) {
     const totalShares = post?.shares?.length || 0;
 
     const likeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-    const handleShowMore = () => {
-        setVisibleCount((prev) => prev + 5);
-    };
 
     // ==========================================
     // FEED LIKE LOGIC (Optimistic UI + Debounce + Supabase)
@@ -314,13 +312,25 @@ export default function Post({ post }: Props) {
                         )
                     })}
 
+                    {/* DYNAMIC COMMENT EXPANSION LOGIC */}
                     {visibleCount < generalComments.length && (
-                        <button
-                            onClick={handleShowMore}
-                            className="text-main-blue hover:text-main-blue/80 text-[14px] font-medium w-fit text-left mt-1 transition-colors"
-                        >
-                            Show {Math.min(5, generalComments.length - visibleCount)} more comments
-                        </button>
+                        visibleCount === 1 ? (
+                            <button
+                                onClick={() => setVisibleCount(4)} // Expands up to 3 more comments inline
+                                className="text-main-blue hover:text-main-blue/80 text-[14px] font-medium w-fit text-left mt-1 transition-colors cursor-pointer" 
+                                title='Show more Comments'
+                            >
+                                Show {Math.min(3, generalComments.length - visibleCount)} more comment{Math.min(3, generalComments.length - visibleCount) !== 1 ? 's' : ''}
+                            </button>
+                        ) : (
+                            <Link
+                                href={`/post/${post.id}`}
+                                className="text-main-blue hover:text-main-blue/80 text-[14px] font-medium w-fit text-left mt-1 transition-colors cursor-pointer block"
+                                title='View all Comments'
+                            >
+                                View more comments
+                            </Link>
+                        )
                     )}
                 </div>
             )}

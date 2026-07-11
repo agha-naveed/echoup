@@ -43,11 +43,9 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
     const postAuthorDP = post?.author?.profileImage || post?.author?.profile_image;
     const postCreatedAt = post?.createdAt || post?.created_at;
 
-    // 2. Engagement State (checking both camelCase and snake_case properties safely)
+    // 2. Engagement State
     const [likes, setLikes] = useState<any[]>(initialPost?.likes || []);
     const [shares, setShares] = useState<any[]>(initialPost?.shares || []);
-    
-    // Using realComments to track the dynamic comment list
     const [realComments, setRealComments] = useState<any[]>(post?.comments || []);
 
     const currentPhotoLikes = likes.filter((l: any) => (l.photoIndex ?? l.photo_index) === currentIndex);
@@ -103,7 +101,6 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                 }
             } catch (error) {
                 console.error("Failed to sync like with server");
-                // Revert on failure
                 if (wasLiked) {
                     setLikes((prev: any[]) => [...prev, { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: currentIndex }]);
                 } else {
@@ -146,6 +143,7 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
     // ================ Slider ================
 
     const images = initialPost?.imageUrl || initialPost?.image_url || [];
+    const hasImages = images.length > 0;
     const hasMultipleImages = images.length > 1;
 
     const nextImage = () => {
@@ -188,7 +186,6 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
             }
         };
 
-        // Optimistically update
         setRealComments((prevComments: any) => [temporaryComment, ...(prevComments || [])]);
         if (commentRef.current) commentRef.current.innerText = "";
         setIsEmpty(true);
@@ -204,7 +201,6 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
             if (error) throw error;
         } catch (error) {
             console.error("Failed to add comment");
-            // Remove optimistic comment on fail
             setRealComments((prevComments: any) => prevComments.filter((c: any) => c.id !== temporaryComment.id));
         } finally {
             setIsSubmitting(false);
@@ -240,12 +236,15 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
 
     if (!post) return null;
 
-    return (
-        <div className="flex min-h-screen h-full">
-            <div className="w-[70vw] h-full relative bg-black">
-                <div className="absolute p-3 z-20 modelpostopen-bg w-full flex items-center gap-2">
-                    <IoMdCloseCircle onClick={handleBack} title="Close" className="text-[32px] cursor-pointer text-white hover:text-gray-300 transition" />
-                    <Link href={`/@${post?.author?.username}`} className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden border border-white/20">
+    // ==========================================
+    // REUSABLE POST CONTENT (Comments, Author, Input)
+    // ==========================================
+    const renderPostContent = () => (
+        <>
+            {/* Author & Content Area */}
+            <div className="px-5 py-4">
+                <div className="flex gap-2">
+                    <Link href={`/@${post?.author?.username}`} className="min-w-[45.5px] w-[45.5px] h-[45.5px] rounded-full overflow-hidden border border-main-border">
                         {postAuthorDP ? (
                             <Image src={postAuthorDP} alt="..." width={100} height={100} className="w-full h-full object-cover" />
                         ) : (
@@ -254,17 +253,165 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                             </div>
                         )}
                     </Link>
-                    <div className="grid ml-1.5 text-white">
-                        <Link href={`/@${post?.author?.username}`} className="text-[22px] font-medium leading-tight hover:underline">{postAuthorFName} {postAuthorLName}</Link>
-                        <span className="text-[12px] text-gray-300">
-                            {postCreatedAt ? formatDistanceToNowStrict(new Date(postCreatedAt), { addSuffix: true }) : "Just now"}
+                    <div className="grid ml-1.5 text-foreground">
+                        <Link href={`/@${post?.author?.username}`} className="text-[18px] font-medium hover:underline">{postAuthorFName} {postAuthorLName}</Link>
+                        <span suppressHydrationWarning className="text-[12px] text-gray-400">
+                            {postCreatedAt ? formatDistanceToNowStrict(new Date(postCreatedAt), { addSuffix: true }) : ""}
                         </span>
                     </div>
                 </div>
+                {post?.content && <div className="text-[15px] text-foreground mt-3 whitespace-pre-wrap">{post.content}</div>}
+            </div>
 
-                <div className="w-full lg:w-[70vw] h-full relative bg-black flex items-center justify-center group/slider">
-                    {images.length > 0 && (
-                        <>
+            <div className="px-5">
+                <div className="w-full h-px bg-light-clr px-5 border-b border-main-border"></div>
+            </div>
+
+            {/* Engagement Buttons */}
+            <div className='px-5 py-3 flex items-center gap-4 text-foreground border-t border-main-border'>
+                <button onClick={handleLike} className={`flex items-center gap-2 text-[16px] transition-all hover:bg-dark-clr/50 px-3 py-1.5 rounded-full ${isLiked ? 'text-red-500' : 'hover:text-red-500'}`}>
+                    {isLiked ? <GoHeartFill className="text-[22px]" /> : <GoHeart className="text-[22px]" />}
+                    <span className='font-medium'>{likeCount}</span>
+                </button>
+                <button onClick={() => setIsFocus(true)} className='text-[16px] cursor-pointer flex items-center gap-2 transition-all hover:bg-dark-clr/50 hover:text-main-blue px-3 py-1.5 rounded-full'>
+                    <GoComment className="text-[20px]" />
+                    <span className='font-medium'>{commentCount}</span>
+                </button>
+                <button onClick={handleShare} className='flex items-center gap-2 text-[16px] cursor-pointer transition-all hover:bg-dark-clr/50 hover:text-green-500 px-3 py-1.5 rounded-full'>
+                    <RiShareForward2Line className="text-[22px]" />
+                    <span className='font-medium'>{shareCount}</span>
+                </button>
+            </div>
+
+            {/* Comments Area */}
+            <div className='flex-1 overflow-y-auto custom-scroll px-5 py-4 grid gap-4 content-start relative'>
+                <div className='w-fit h-7.5 relative z-30' ref={dropdownRef}>
+                    <ul className={`${isOpen ? "bg-zinc-900 rounded-lg shadow-xl" : "bg-dark-clr rounded-full"} w-max group absolute top-0 overflow-hidden`}>
+                        <li onClick={() => setIsOpen(true)} className='flex gap-1 items-center text-foreground cursor-pointer transition-all hover:bg-zinc-900/30 w-full px-3 py-1.5 text-[14px] font-medium'>
+                            <span>{sortComment === "old" ? "Oldest First" : "Newest First"}</span>
+                            <IoIosArrowDown className={`transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                        </li>
+                        {isOpen && (
+                            <li onClick={() => { setSortComment(sortComment === "new" ? "old" : "new"); setIsOpen(false); sortAllComments(); navigate.refresh() }} className={`flex gap-1 items-center text-foreground cursor-pointer transition-all hover:bg-white/10 px-4 py-2 text-[14px] w-full border-t border-main-border`}>
+                                <span>{sortComment === "new" ? "Sort by Oldest" : "Sort by Newest"}</span>
+                            </li>
+                        )}
+                    </ul>
+                </div>
+
+                {realComments.length === 0 ? (
+                    <div className="text-center text-gray-500 text-[14px] mt-10">
+                        No comments yet. Be the first to reply!
+                    </div>
+                ) : (
+                    realComments.map((comment: any) => {
+                        const cPhotoIndex = comment.photoIndex ?? comment.photo_index;
+                        if (cPhotoIndex !== currentIndex && hasImages) return null; // Only filter by index if images exist
+
+                        const cFName = comment.author?.firstName || comment.author?.first_name;
+                        const cLName = comment.author?.lastName || comment.author?.last_name;
+                        const cDP = comment.author?.profileImage || comment.author?.profile_image;
+                        const cTime = comment.createdAt || comment.created_at;
+
+                        return (
+                            <div key={comment.id} className='flex items-start gap-2'>
+                                <Link href={`/@${comment.author.username}`} className='min-w-10 h-10 rounded-full overflow-hidden border border-main-border shrink-0'>
+                                    {cDP ? (
+                                        <Image src={cDP} alt="DP" width={100} height={100} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="w-full h-full bg-main-blue flex items-center justify-center text-white font-bold uppercase">
+                                            {cFName?.charAt(0) || "U"}
+                                        </div>
+                                    )}
+                                </Link>
+
+                                <div className='grid gap-1 text-foreground text-[14px] bg-dark-clr/40 rounded-[12px] rounded-tl-none py-2 px-3'>
+                                    <div className="flex items-center gap-2">
+                                        <Link href={`/@${comment.author.username}`} className='font-bold w-fit text-[13px] hover:underline'>
+                                            {cFName} {cLName}
+                                        </Link>
+                                        <span suppressHydrationWarning className="text-[11px] text-gray-500">
+                                            {cTime ? formatDistanceToNowStrict(new Date(cTime), { addSuffix: true }) : ""}
+                                        </span>
+                                    </div>
+                                    <span className='text-foreground whitespace-pre-wrap'>{comment.content}</span>
+                                </div>
+                            </div>
+                        )
+                    })
+                )}
+            </div>
+
+            {/* Comment Input */}
+            <div className='p-4 border-t border-main-border mt-auto shrink-0'>
+                <div className='flex items-start gap-2'>
+                    <div className='min-w-10 h-10 rounded-full overflow-hidden border border-main-border shrink-0'>
+                        {currentUser?.profile_image ? (
+                            <Image src={currentUser.profile_image} alt="DP" width={100} height={100} className="w-full h-full object-cover" />
+                        ) : (
+                            <div className="w-full h-full bg-main-blue flex items-center justify-center font-bold text-white uppercase">
+                                {currentUser?.first_name?.charAt(0) || "U"}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className={`grid gap-1 text-foreground text-[15px] bg-dark-clr/40 rounded-xl py-1.5 px-2.5 w-full border transition-all ${isFocus ? "border-main-blue/50" : "border-main-border"}`}
+                        onFocus={(e) => { if (e.currentTarget.contains(e.target)) setIsFocus(true); }}
+                        onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsFocus(false); }}>
+                        <div className="flex items-end relative overflow-hidden">
+                            <div
+                                ref={commentRef}
+                                role="textbox"
+                                contentEditable
+                                aria-multiline="true"
+                                data-placeholder={`Commenting as ${currentUser?.first_name || "User"}...`}
+                                onInput={handleInput}
+                                className={`editable-div ${isEmpty ? "is-empty" : ""} w-full max-h-[150px] ${isFocus ? "min-h-[100px]" : "min-h-[30px]"} overflow-y-auto resize-none p-1 pr-9 outline-none whitespace-pre-wrap wrap-break-words break-all select-text`}
+                            />
+                            <button disabled={isSubmitting || !currentUser} onClick={handleCommentSubmit} className={`${(isEmpty || isSubmitting || !currentUser) && "opacity-50 cursor-auto!"}  text-main-blue hover:bg-main-blue/10 transition-all cursor-pointer absolute right-0 bottom-0 p-1.5 rounded-full mb-0.5`} title='Send Message'>
+                                <RiSendPlaneFill className='text-[20px] relative -left-px' />
+                            </button>
+                        </div>
+
+                        <div className={`items-center gap-3 pt-2 pb-1 ${isFocus ? "flex" : "hidden"}`} onMouseDown={(e) => e.preventDefault()}>
+                            <BsEmojiSmile className='text-[18px] cursor-pointer text-gray-400 hover:text-white transition' title='Emoji' />
+                            <CiCamera className='text-[22px] cursor-pointer text-gray-400 hover:text-white transition' title='Image' />
+                            <PiGif className="text-[22px] cursor-pointer text-gray-400 hover:text-white transition" title='GIF' />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </>
+    );
+
+    return (
+        <div className="flex min-h-screen h-full justify-center w-full">
+            {hasImages ? (
+                // ==========================================
+                // IMAGE LAYOUT (70 / 30 Split)
+                // ==========================================
+                <>
+                    <div className="w-[70vw] h-full relative bg-black">
+                        <div className="absolute p-3 z-20 modelpostopen-bg w-full flex items-center gap-2">
+                            <IoMdCloseCircle onClick={handleBack} title="Close" className="text-[32px] cursor-pointer text-white hover:text-gray-300 transition" />
+                            <Link href={`/@${post?.author?.username}`} className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden border border-white/20">
+                                {postAuthorDP ? (
+                                    <Image src={postAuthorDP} alt="..." width={100} height={100} className="w-full h-full object-cover" />
+                                ) : (
+                                    <div className="w-full h-full bg-main-blue flex items-center justify-center font-bold text-white uppercase">
+                                        {postAuthorFName?.charAt(0) || "U"}
+                                    </div>
+                                )}
+                            </Link>
+                            <div className="grid ml-1.5 text-white">
+                                <Link href={`/@${post?.author?.username}`} className="text-[22px] font-medium leading-tight hover:underline">{postAuthorFName} {postAuthorLName}</Link>
+                                <span suppressHydrationWarning className="text-[12px] text-gray-300">
+                                    {postCreatedAt ? formatDistanceToNowStrict(new Date(postCreatedAt), { addSuffix: true }) : "Just now"}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="w-full lg:w-[70vw] h-full relative bg-black flex items-center justify-center group/slider">
                             <div className="w-full h-full relative flex items-center justify-center">
                                 <Image
                                     src={images[currentIndex]}
@@ -273,7 +420,6 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                                     width={100}
                                     height={100}
                                 />
-
                                 <Image
                                     src={images[currentIndex]}
                                     className='w-full max-h-full object-contain relative z-10 transition-opacity duration-300'
@@ -286,201 +432,45 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                                 {hasMultipleImages && (
                                     <>
                                         {currentIndex > 0 && (
-                                            <button
-                                                onClick={prevImage}
-                                                className="absolute left-4 z-30 p-2.5 bg-black/40 hover:bg-black/80 text-white rounded-full transition-all backdrop-blur-sm opacity-0 group-hover/slider:opacity-100"
-                                            >
+                                            <button onClick={prevImage} className="absolute left-4 z-30 p-2.5 bg-black/40 hover:bg-black/80 text-white rounded-full transition-all backdrop-blur-sm opacity-0 group-hover/slider:opacity-100">
                                                 <IoIosArrowBack size={24} className="relative right-0.5" />
                                             </button>
                                         )}
-
                                         {currentIndex < images.length - 1 && (
-                                            <button
-                                                onClick={nextImage}
-                                                className="absolute right-4 z-30 p-2.5 bg-black/40 hover:bg-black/80 text-white rounded-full transition-all backdrop-blur-sm opacity-0 group-hover/slider:opacity-100"
-                                            >
+                                            <button onClick={nextImage} className="absolute right-4 z-30 p-2.5 bg-black/40 hover:bg-black/80 text-white rounded-full transition-all backdrop-blur-sm opacity-0 group-hover/slider:opacity-100">
                                                 <IoIosArrowForward size={24} className="relative left-0.5" />
                                             </button>
                                         )}
-
                                         <div className="absolute bottom-6 z-30 flex gap-2">
                                             {images.map((_: any, idx: number) => (
-                                                <div
-                                                    key={idx}
-                                                    className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentIndex
-                                                        ? 'w-4 bg-white'
-                                                        : 'w-1.5 bg-white/50 hover:bg-white/80'
-                                                        }`}
-                                                />
+                                                <div key={idx} className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/50 hover:bg-white/80'}`} />
                                             ))}
                                         </div>
                                     </>
                                 )}
                             </div>
-                        </>
-                    )}
-                </div>
-            </div>
-
-            <div className="w-[30vw] h-full bg-primary z-20 flex flex-col border-l border-main-border">
-                <div className="px-5 py-4">
-                    <div className="flex gap-2">
-                        <Link href={`/@${post?.author?.username}`} className="min-w-[45.5px] w-[45.5px] h-[45.5px] rounded-full overflow-hidden border border-main-border">
-                            {postAuthorDP ? (
-                                <Image src={postAuthorDP} alt="..." width={100} height={100} className="w-full h-full object-cover" />
-                            ) : (
-                                <div className="w-full h-full bg-main-blue flex items-center justify-center font-bold text-white uppercase">
-                                    {postAuthorFName?.charAt(0) || "U"}
-                                </div>
-                            )}
-                        </Link>
-                        <div className="grid ml-1.5 text-foreground">
-                            <Link href={`/@${post?.author?.username}`} className="text-[18px] font-medium hover:underline">{postAuthorFName} {postAuthorLName}</Link>
-                            <span className="text-[12px] text-gray-400">
-                                {postCreatedAt ? formatDistanceToNowStrict(new Date(postCreatedAt), { addSuffix: true }) : ""}
-                            </span>
                         </div>
                     </div>
-                    {post?.content && <div className="text-[15px] text-foreground mt-3 whitespace-pre-wrap">{post.content}</div>}
-                </div>
 
-                <div className="px-5">
-                    <div className="w-full h-px bg-light-clr px-5 border-b border-main-border"></div>
-                </div>
-
-                {/* Engagement Buttons */}
-                <div className='px-5 py-3 flex items-center gap-4 text-foreground border-t border-main-border'>
-                    {/* LIKE BUTTON */}
-                    <button
-                        onClick={handleLike}
-                        className={`flex items-center gap-2 text-[16px] transition-all hover:bg-dark-clr/50 px-3 py-1.5 rounded-full ${isLiked ? 'text-red-500' : 'hover:text-red-500'}`}
-                    >
-                        {isLiked ? <GoHeartFill className="text-[22px]" /> : <GoHeart className="text-[22px]" />}
-                        <span className='font-medium'>{likeCount}</span>
-                    </button>
-
-                    {/* COMMENT BUTTON */}
-                    <button
-                        onClick={() => setIsFocus(true)}
-                        className='text-[16px] cursor-pointer flex items-center gap-2 transition-all hover:bg-dark-clr/50 hover:text-main-blue px-3 py-1.5 rounded-full'
-                    >
-                        <GoComment className="text-[20px]" />
-                        <span className='font-medium'>{commentCount}</span>
-                    </button>
-
-                    {/* SHARE BUTTON */}
-                    <button
-                        onClick={handleShare}
-                        className='flex items-center gap-2 text-[16px] cursor-pointer transition-all hover:bg-dark-clr/50 hover:text-green-500 px-3 py-1.5 rounded-full'
-                    >
-                        <RiShareForward2Line className="text-[22px]" />
-                        <span className='font-medium'>{shareCount}</span>
-                    </button>
-                </div>
-
-                <div className='flex-1 overflow-y-auto custom-scroll px-5 py-4 grid gap-4 content-start relative'>
-                    <div className='w-fit h-7.5 relative z-30' ref={dropdownRef}>
-                        <ul className={`${isOpen ? "bg-zinc-900 rounded-lg shadow-xl" : "bg-dark-clr rounded-full"} w-max group absolute top-0 overflow-hidden`}>
-                            <li onClick={() => setIsOpen(true)} className='flex gap-1 items-center text-foreground cursor-pointer transition-all hover:bg-zinc-900/30 w-full px-3 py-1.5 text-[14px] font-medium'>
-                                <span>{sortComment === "old" ? "Oldest First" : "Newest First"}</span>
-                                <IoIosArrowDown className={`transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                            </li>
-                            {isOpen && (
-                                <li onClick={() => { setSortComment(sortComment === "new" ? "old" : "new"); setIsOpen(false); sortAllComments(); navigate.refresh() }} className={`flex gap-1 items-center text-foreground cursor-pointer transition-all hover:bg-white/10 px-4 py-2 text-[14px] w-full border-t border-main-border`}>
-                                    <span>{sortComment === "new" ? "Sort by Oldest" : "Sort by Newest"}</span>
-                                </li>
-                            )}
-                        </ul>
+                    <div className="w-[30vw] h-full bg-primary z-20 flex flex-col border-l border-main-border">
+                        {renderPostContent()}
                     </div>
-
-                    {/* Comments List */}
-                    {realComments.length === 0 ? (
-                        <div className="text-center text-gray-500 text-[14px] mt-10">
-                            No comments yet. Be the first to reply!
+                </>
+            ) : (
+                // ==========================================
+                // TEXT-ONLY LAYOUT (Centered Column)
+                // ==========================================
+                <div className="flex items-center h-full">
+                    <div className="w-[540px] h-[90%] max-w-[700px] rounded-xl overflow-hidden bg-primary z-20 flex flex-col relative shadow-2xl border-x border-main-border">
+                        {/* Header with Close Button for Text-Only */}
+                        <div className="px-5 py-3 border-b border-main-border flex items-center gap-4 sticky top-0 bg-primary z-40">
+                            <IoMdCloseCircle onClick={handleBack} title="Close" className="text-[32px] cursor-pointer text-foreground hover:text-gray-400 transition" />
+                            <h2 className="text-xl font-bold text-foreground">Post</h2>
                         </div>
-                    ) : (
-                        realComments.map((comment: any) => {
-                            const cPhotoIndex = comment.photoIndex ?? comment.photo_index;
-                            if (cPhotoIndex !== currentIndex) return null;
-
-                            const cFName = comment.author?.firstName || comment.author?.first_name;
-                            const cLName = comment.author?.lastName || comment.author?.last_name;
-                            const cDP = comment.author?.profileImage || comment.author?.profile_image;
-                            const cTime = comment.createdAt || comment.created_at;
-
-                            return (
-                                <div key={comment.id} className='flex items-start gap-2'>
-                                    <Link href={`/@${comment.author.username}`} className='min-w-10 h-10 rounded-full overflow-hidden border border-main-border shrink-0'>
-                                        {cDP ? (
-                                            <Image src={cDP} alt={`${cFName} ${cLName} Profile Picture`} width={100} height={100} className="w-full h-full object-cover" />
-                                        ) : (
-                                            <div className="w-full h-full bg-main-blue flex items-center justify-center text-white font-bold uppercase">
-                                                {cFName?.charAt(0) || "U"}
-                                            </div>
-                                        )}
-                                    </Link>
-
-                                    <div className='grid gap-1 text-foreground text-[14px] bg-dark-clr/40 rounded-[12px] rounded-tl-none py-2 px-3'>
-                                        <div className="flex items-center gap-2">
-                                            <Link href={`/@${comment.author.username}`} className='font-bold w-fit text-[13px] hover:underline'>
-                                                {cFName} {cLName}
-                                            </Link>
-                                            <span className="text-[11px] text-gray-500">
-                                                {cTime ? formatDistanceToNowStrict(new Date(cTime), { addSuffix: true }) : ""}
-                                            </span>
-                                        </div>
-                                        <span className='text-foreground whitespace-pre-wrap'>{comment.content}</span>
-                                    </div>
-                                </div>
-                            )
-                        })
-                    )}
-                </div>
-
-                {/* Comment Input */}
-                <div className='p-4 border-t border-main-border mt-auto'>
-                    <div className='flex items-start gap-2'>
-                        <div className='min-w-10 h-10 rounded-full overflow-hidden border border-main-border shrink-0'>
-                            {currentUser?.profile_image ? (
-                                <Image src={currentUser.profile_image} alt="DP" width={100} height={100} className="w-full h-full object-cover" />
-                            ) : (
-                                <div className="w-full h-full bg-main-blue flex items-center justify-center font-bold text-white uppercase">
-                                    {currentUser?.first_name?.charAt(0) || "U"}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className={`grid gap-1 text-foreground text-[15px] bg-dark-clr/40 rounded-xl py-1.5 px-2.5 w-full border transition-all ${isFocus ? "border-main-blue/50" : "border-main-border"}`}
-                            onFocus={(e) => {
-                                if (e.currentTarget.contains(e.target)) setIsFocus(true);
-                            }}
-                            onBlur={(e) => {
-                                if (!e.currentTarget.contains(e.relatedTarget)) setIsFocus(false);
-                            }}>
-                            <div className="flex items-end relative overflow-hidden">
-                                <div
-                                    ref={commentRef}
-                                    role="textbox"
-                                    contentEditable
-                                    aria-multiline="true"
-                                    data-placeholder={`Commenting as ${currentUser?.first_name || "User"}...`}
-                                    onInput={handleInput}
-                                    className={`editable-div ${isEmpty ? "is-empty" : ""} w-full max-h-[150px] ${isFocus ? "min-h-[100px]" : "min-h-[30px]"} overflow-y-auto resize-none p-1 pr-9 outline-none whitespace-pre-wrap wrap-break-words break-all select-text`}
-                                />
-                                <button disabled={isSubmitting || !currentUser} onClick={handleCommentSubmit} className={`${(isEmpty || isSubmitting || !currentUser) && "opacity-50 cursor-auto!"}  text-main-blue hover:bg-main-blue/10 transition-all cursor-pointer absolute right-0 bottom-0 p-1.5 rounded-full mb-0.5`} title='Send Message'>
-                                    <RiSendPlaneFill className='text-[20px] relative -left-px' />
-                                </button>
-                            </div>
-
-                            <div className={`items-center gap-3 pt-2 pb-1 ${isFocus ? "flex" : "hidden"}`} onMouseDown={(e) => e.preventDefault()}>
-                                <BsEmojiSmile className='text-[18px] cursor-pointer text-gray-400 hover:text-white transition' title='Emoji' />
-                                <CiCamera className='text-[22px] cursor-pointer text-gray-400 hover:text-white transition' title='Image' />
-                                <PiGif className="text-[22px] cursor-pointer text-gray-400 hover:text-white transition" title='GIF' />
-                            </div>
-                        </div>
+                        {renderPostContent()}
                     </div>
                 </div>
-            </div>
-        </div >
+            )}
+        </div>
     )
 }
