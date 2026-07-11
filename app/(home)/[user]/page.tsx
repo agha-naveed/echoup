@@ -1,42 +1,35 @@
-import FeedPage from "@/components/Feed"; // Adjust path if needed
+import FeedPage from "@/components/Feed"; 
 import Image from "next/image"
-import Link from "next/link";
-import { GoPlus } from "react-icons/go";
-import { HiOutlineDotsHorizontal } from "react-icons/hi";
 import { createClient } from "@/utils/supabase/server";
 import { notFound } from "next/navigation";
+import ProfileHeader from "@/components/ProfileHeader"; // Import your new component
 
-// Next.js passes dynamic route parameters via the 'params' prop
-const UserProfilePage = async ({ params }: { params: { user: string } }) => {
-    // Await params for Next.js 15+ compatibility
+const UserProfilePage = async ({ params }: { params: Promise<{ user: string }> }) => {
     const resolvedParams = await params; 
     
-    // 1. Decode the URL (turns "%40ali" into "@ali")
     let rawUsername = decodeURIComponent(resolvedParams.user);
 
-    // 2. Strip the "@" symbol if it exists, otherwise enforce it by returning 404
     if (rawUsername.startsWith("@")) {
         rawUsername = rawUsername.substring(1);
     } else {
-        // If a user tries to visit /ali instead of /@ali, show 404 page
         notFound(); 
     }
 
     const supabase = await createClient();
 
-    // 3. Fetch the user's profile details using the clean username
+    // 1. Get the current logged-in user
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+
+    // 2. Fetch the viewed user's profile
     const { data: profile, error: profileError } = await supabase
         .from("users")
         .select("*")
         .eq("username", rawUsername)
         .single();
 
-    // If the user doesn't exist in the database, show a 404
-    if (!profile || profileError) {
-        notFound();
-    }
+    if (!profile || profileError) notFound();
 
-    // 4. Fetch the posts specifically authored by this user
+    // 3. Fetch their posts
     const { data: initialPosts } = await supabase
         .from("posts")
         .select(`
@@ -58,10 +51,31 @@ const UserProfilePage = async ({ params }: { params: { user: string } }) => {
         .order("created_at", { ascending: false })
         .limit(20);
 
-    // Format the display name safely handling the nullable last name
+    // 4. Fetch Follower and Following Counts
+    const { count: followersCount } = await supabase
+        .from('follows')
+        .select('*', { count: 'exact', head: true })
+        .eq('following_id', profile.id);
+
+    const { count: followingCount } = await supabase
+        .from('follows')
+        .select('*', { count: 'exact', head: true })
+        .eq('follower_id', profile.id);
+
+    // 5. Check if the current user is following this profile
+    let isFollowing = false;
+    if (authUser) {
+        const { data: followRecord } = await supabase
+            .from('follows')
+            .select('follower_id')
+            .eq('follower_id', authUser.id)
+            .eq('following_id', profile.id)
+            .maybeSingle(); // maybeSingle prevents errors if they aren't following
+            
+        if (followRecord) isFollowing = true;
+    }
+
     const fullName = `${profile.first_name} ${profile.last_name || ""}`.trim();
-    
-    // Fallback DP if they haven't uploaded one
     const profileImageUrl = profile.profile_image || "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png";
 
     return (
@@ -75,34 +89,15 @@ const UserProfilePage = async ({ params }: { params: { user: string } }) => {
                 </div>
             </div>
 
-            <div className="sm:px-7 pt-5 pb-5 px-3">
-                <div className="flex items-center justify-between">
-                    <div className="text-foreground">
-                        <h3 className="sm:text-3xl text-2xl font-medium">{fullName}</h3>
-                        <p className="text-gray-400">@{profile.username}</p>
-                    </div>
-                    <div className="flex gap-3">
-                        <button className="bg-dark-clr px-2.25 rounded-lg border border-foreground/10 cursor-pointer transition-all hover:bg-light-clr outline-none flex items-center justify-center">
-                            <HiOutlineDotsHorizontal className="text-xl text-foreground h-full" />
-                        </button>
-                        <button className="btn-gradient outline-none flex items-center gap-1 px-4 py-2 rounded-lg">
-                            <GoPlus className="text-xl relative -left-0.5" />
-                            <span>Follow</span>
-                        </button>
-                    </div>
-                </div>
-
-                <div className="text-foreground">
-                    <p className="sm:w-[60%] w-full my-5">
-                        Software Developer at Echo Up. Share your world and connect with others.
-                    </p>
-                    <div className="sm:text-[17px] text-[15px] flex gap-7">
-                        <div className="text-center"><span className="font-medium text-white">{initialPosts?.length || 0}</span> Posts</div>
-                        <div className="text-center"><span className="font-medium text-white">0</span> Followers</div>
-                        <div className="text-center"><span className="font-medium text-white">0</span> Following</div>
-                    </div>
-                </div>
-            </div>
+            {/* Injected Client Component for Interactivity */}
+            <ProfileHeader 
+                profile={profile}
+                currentUserId={authUser?.id}
+                initialIsFollowing={isFollowing}
+                initialFollowersCount={followersCount || 0}
+                initialFollowingCount={followingCount || 0}
+                postCount={initialPosts?.length || 0}
+            />
 
             <div className="border-b border-b-main-border"></div>
 
