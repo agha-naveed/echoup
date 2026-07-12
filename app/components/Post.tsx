@@ -162,7 +162,7 @@ export default function Post({ post }: Props) {
     // ==========================================
 
     const ImageTile = ({ src, alt, width = 600, height = 600, idx, cHeight }: any) => (
-        <Link href={`/post/${post.id}?photo=${idx + 1}`} className={`${imageCount == 4 && "xl:h-[272px]! usm:h-full h-[150px] overflow-hidden"} ${imageCount == 3 && "sm:h-[200px] h-[160px]"} ${imageCount == 2 && "usm:h-75 h-55"} w-full relative group`}>
+        <Link href={`/post/${post.id}?photo=${idx + 1}`} className={`z-0 ${imageCount == 4 && "xl:h-[272px]! usm:h-full h-[150px] overflow-hidden"} ${imageCount == 3 && "sm:h-[200px] h-[160px]"} ${imageCount == 2 && "usm:h-75 h-55"} w-full relative group`}>
             <div className={`absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity z-10`} />
             <Image
                 src={src}
