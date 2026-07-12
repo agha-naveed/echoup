@@ -18,7 +18,7 @@
 /out/
 
 /backend/.env
-
+/backend/__pycache__
 # production
 /build
 

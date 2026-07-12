@@ -28,6 +28,7 @@ export default async function Page() {
                 id,
                 content,
                 image_url,
+                video_url,
                 created_at,
                 author:users ( id, username, first_name, last_name, profile_image ),
                 likes ( id, user_id, photo_index ),
@@ -48,7 +49,6 @@ export default async function Page() {
   return (
     <div className="w-full xl:px-10 md:px-7 flex flex-col gap-5 min-h-screen">
       <CreatePost />
-      {/* Pass the fetched data down to the client component. Default to an empty array if undefined */}
       <FeedPage initialPosts={initialPosts || []} />
     </div>
   );

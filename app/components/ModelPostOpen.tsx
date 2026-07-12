@@ -13,6 +13,7 @@ import { GoComment, GoHeart, GoHeartFill } from "react-icons/go";
 import { createClient } from "@/utils/supabase/client";
 import { toggleLikeState } from '@/actions/like';
 import { submitComment } from '@/actions/comment';
+import Video from "./CustomVideoPlayer";
 
 export default function ModelPostOpen({ initialPost, query }: { initialPost: any, query: any }) {
 
@@ -139,6 +140,7 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
 
     const images = initialPost?.imageUrl || initialPost?.image_url || [];
     const hasImages = images.length > 0;
+    const hasVideo = initialPost?.video_url || null;
     const hasMultipleImages = images.length > 1;
 
     const nextImage = () => {
@@ -444,7 +446,53 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                         {renderPostContent()}
                     </div>
                 </>
-            ) : (
+            ) : 
+            hasVideo ? (
+                <>
+                    <div className="w-[70vw] h-full relative bg-black">
+                        <div className="absolute p-3 z-20 modelpostopen-bg w-full flex items-center gap-2">
+                            <IoMdCloseCircle onClick={handleBack} title="Close" className="text-[32px] cursor-pointer text-white hover:text-gray-300 transition" />
+                            <Link href={`/@${post?.author?.username}`} className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden border border-white/20">
+                                {postAuthorDP ? (
+                                    <Image src={postAuthorDP} alt="..." width={100} height={100} className="w-full h-full object-cover" />
+                                ) : (
+                                    <div className="w-full h-full bg-main-blue flex items-center justify-center font-bold text-white uppercase">
+                                        {postAuthorFName?.charAt(0) || "U"}
+                                    </div>
+                                )}
+                            </Link>
+                            <div className="grid ml-1.5 text-white">
+                                <Link href={`/@${post?.author?.username}`} className="text-[22px] font-medium leading-tight hover:underline">{postAuthorFName} {postAuthorLName}</Link>
+                                <span suppressHydrationWarning className="text-[12px] text-gray-300">
+                                    {postCreatedAt ? formatDistanceToNowStrict(new Date(postCreatedAt), { addSuffix: true }) : "Just now"}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="w-full lg:w-[70vw] h-full relative bg-black flex items-center justify-center group/slider">
+                            <div className="w-full h-full relative flex items-center justify-center">
+                                <video
+                                    src={hasVideo}
+                                    className='w-full h-full object-cover blur-3xl opacity-40 absolute top-0 z-0'
+                                    muted
+                                    autoPlay
+                                    width={100}
+                                    height={100}
+                                />
+                                <Video
+                                    src={hasVideo}
+                                    isReel={false}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="w-[30vw] h-full bg-primary z-20 flex flex-col border-l border-main-border">
+                        {renderPostContent()}
+                    </div>
+                </>
+            ) :
+            (
                 // ==========================================
                 // TEXT-ONLY LAYOUT (Centered Column)
                 // ==========================================

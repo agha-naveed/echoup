@@ -13,7 +13,6 @@ const CreatePost = () => {
     const router = useRouter();
     const supabase = createClient();
     
-    // Replace NextAuth session with Supabase user state
     const [currentUser, setCurrentUser] = useState<any>(null);
 
     const [isFocus, setIsFocus] = useState(false);
@@ -21,13 +20,17 @@ const CreatePost = () => {
     const [isPosting, setIsPosting] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+    // Image states
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [previewUrls, setPreviewUrls] = useState<string[]>([]);
 
+    // NEW: Video state
+    const [selectedVideo, setSelectedVideo] = useState<File | null>(null);
+
     const contentRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const videoInputRef = useRef<HTMLInputElement>(null); // NEW: Ref for video input
 
-    // Fetch the active user on mount
     useEffect(() => {
         const fetchUser = async () => {
             const { data: { user } } = await supabase.auth.getUser();
@@ -45,7 +48,7 @@ const CreatePost = () => {
 
     const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
         const text = e.currentTarget.textContent?.trim() || "";
-        if (selectedFiles.length > 0) {
+        if (selectedFiles.length > 0 || selectedVideo) {
             setIsEmpty(false);
         } else {
             setIsEmpty(!text);
@@ -53,10 +56,16 @@ const CreatePost = () => {
         if (errorMsg) setErrorMsg(null);
     };
 
+    // --- IMAGE LOGIC ---
     const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files) return;
 
-        setIsEmpty(false)
+        // Prevent mixing images and videos
+        if (selectedVideo) {
+            setErrorMsg("You cannot upload images and a video in the same post.");
+            return;
+        }
+
         const files = Array.from(e.target.files);
 
         if (selectedFiles.length + files.length > 4) {
@@ -64,36 +73,75 @@ const CreatePost = () => {
             return;
         }
 
+        setIsEmpty(false);
         setSelectedFiles((prev) => [...prev, ...files]);
 
         const newPreviewUrls = files.map((file) => URL.createObjectURL(file));
         setPreviewUrls((prev) => [...prev, ...newPreviewUrls]);
-
         setErrorMsg(null);
     };
 
     const removeImage = (indexToRemove: number) => {
         URL.revokeObjectURL(previewUrls[indexToRemove]);
 
-        if (selectedFiles.length === 1) {
-            setIsEmpty(true)
-        }
+        const remainingFiles = selectedFiles.filter((_, i) => i !== indexToRemove);
+        setSelectedFiles(remainingFiles);
         setPreviewUrls((prev) => prev.filter((_, i) => i !== indexToRemove));
-        setSelectedFiles((prev) => prev.filter((_, i) => i !== indexToRemove));
+        
+        if (remainingFiles.length === 0 && !(contentRef.current?.innerText.trim())) {
+            setIsEmpty(true);
+        }
     };
 
+    // --- NEW: VIDEO LOGIC ---
+    const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Prevent mixing images and videos
+        if (selectedFiles.length > 0) {
+            setErrorMsg("You cannot upload a video and images in the same post.");
+            return;
+        }
+
+        if (!file.type.startsWith("video/")) {
+            setErrorMsg("Please select a valid video file.");
+            return;
+        }
+
+        // 10MB restriction
+        const MAX_FILE_SIZE = 10 * 1024 * 1024; 
+        if (file.size > MAX_FILE_SIZE) {
+            setErrorMsg("Video is too large! Maximum file size is 10MB.");
+            return;
+        }
+
+        setIsEmpty(false);
+        setSelectedVideo(file);
+        setErrorMsg(null);
+    };
+
+    const removeVideo = () => {
+        setSelectedVideo(null);
+        if (!(contentRef.current?.innerText.trim())) {
+            setIsEmpty(true);
+        }
+    };
+
+    // --- SUBMIT LOGIC ---
     const handlePostSubmit = async () => {
         const text = contentRef.current?.innerText.trim() || "";
 
-        if ((!text && selectedFiles.length === 0) || !currentUser) return;
+        if ((!text && selectedFiles.length === 0 && !selectedVideo) || !currentUser) return;
 
         setIsPosting(true);
         setErrorMsg(null);
 
         try {
             let uploadedImageUrls: string[] = [];
+            let uploadedVideoUrl: string | null = null;
 
-            // 1. Upload images to Cloudinary
+            // 1A. Upload images to Cloudinary
             if (selectedFiles.length > 0) {
                 const getImagesUrl = selectedFiles.map(async (file) => {
                     const formData = new FormData();
@@ -108,12 +156,27 @@ const CreatePost = () => {
                 uploadedImageUrls = await Promise.all(getImagesUrl);
             }
 
-            // 2. Insert Post directly into Supabase PostgreSQL
+            // 1B. Upload video to Cloudinary
+            if (selectedVideo) {
+                const formData = new FormData();
+                formData.append("file", selectedVideo);
+                formData.append("upload_preset", "my-images"); // Standard unsigned presets usually accept video too
+                
+                // IMPORTANT: Notice the URL uses /video/upload instead of /image/upload
+                const response = await axios.post(
+                    `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/video/upload`,
+                    formData
+                );
+                uploadedVideoUrl = response.data.secure_url;
+            }
+
+            // 2. Insert Post directly into Supabase
             const { error: insertError } = await supabase
                 .from("posts")
                 .insert({
                     content: text,
-                    image_url: uploadedImageUrls, // Note: using snake_case to match our DB schema!
+                    image_url: uploadedImageUrls, 
+                    video_url: uploadedVideoUrl, // NEW: Make sure you add a `video_url` (text) column to your `posts` table!
                     author_id: currentUser.id
                 });
 
@@ -124,6 +187,7 @@ const CreatePost = () => {
             setIsEmpty(true);
             setSelectedFiles([]);
             setPreviewUrls([]);
+            setSelectedVideo(null);
             router.refresh();
 
         } catch (error: any) {
@@ -137,14 +201,10 @@ const CreatePost = () => {
     return (
         <div className={`flex flex-col gap-2 px-5 py-3 bg-primary w-full rounded-xl text-foreground/80 border transition-all ${isFocus ? "border-foreground/40 shadow-[0_2px_15px_#a3a3a334]" : "border-main-border"}`}
             onFocus={(e) => {
-                if (e.currentTarget.contains(e.target)) {
-                    setIsFocus(true);
-                }
+                if (e.currentTarget.contains(e.target)) setIsFocus(true);
             }}
             onBlur={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget)) {
-                    setIsFocus(false);
-                }
+                if (!e.currentTarget.contains(e.relatedTarget)) setIsFocus(false);
             }}>
 
             {errorMsg && (
@@ -152,6 +212,7 @@ const CreatePost = () => {
                     {errorMsg}
                 </div>
             )}
+            
             <div>
                 <div className="flex gap-3 w-full">
                     <div className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden mt-2 border border-main-border">
@@ -176,6 +237,10 @@ const CreatePost = () => {
                         ></div>
                     </div>
                 </div>
+
+                {/* --- MEDIA PREVIEWS --- */}
+                
+                {/* Image Previews */}
                 {previewUrls.length > 0 && (
                     <div className={`flex gap-3 mt-5`}>
                         {previewUrls.map((url, index) => (
@@ -194,10 +259,29 @@ const CreatePost = () => {
                         ))}
                     </div>
                 )}
+
+                {/* Video Preview */}
+                {selectedVideo && (
+                    <div className="relative group w-fit mt-5">
+                        <video 
+                            src={URL.createObjectURL(selectedVideo)} 
+                            className="max-h-[300px] rounded-xl border border-main-border object-cover" 
+                            controls 
+                        />
+                        <button
+                            type="button"
+                            onClick={removeVideo}
+                            className="absolute -top-3 -right-3 bg-red-500 hover:bg-red-600 text-white p-1 rounded-full shadow-lg transition-colors cursor-pointer"
+                        >
+                            <IoMdClose size={18} />
+                        </button>
+                    </div>
+                )}
             </div>
 
             <div className="flex items-center justify-between pt-1">
                 <div className="flex gap-1 items-center">
+                    {/* Hidden Inputs */}
                     <input
                         type="file"
                         multiple
@@ -206,18 +290,34 @@ const CreatePost = () => {
                         ref={fileInputRef}
                         onChange={handleImageSelect}
                     />
+                    <input
+                        type="file"
+                        accept="video/*"
+                        className="hidden"
+                        ref={videoInputRef}
+                        onChange={handleVideoSelect}
+                    />
 
+                    {/* Image Button */}
                     <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         className="p-[6px] transition-all hover:bg-dark-clr rounded-lg cursor-pointer"
+                        title="Add Image"
                     >
                         <TbPhoto className="text-[19px]" />
                     </button>
 
-                    <button type="button" className="p-[6px] transition-all hover:bg-dark-clr rounded-lg cursor-pointer">
+                    {/* Video Button */}
+                    <button 
+                        type="button" 
+                        onClick={() => videoInputRef.current?.click()}
+                        className="p-[6px] transition-all hover:bg-dark-clr rounded-lg cursor-pointer"
+                        title="Add Video/Reel"
+                    >
                         <MdOutlineOndemandVideo className="text-[19px]" />
                     </button>
+                    
                     <button type="button" className="p-[6px] transition-all hover:bg-dark-clr rounded-lg cursor-pointer">
                         <FiFileText className="text-[19px]" />
                     </button>

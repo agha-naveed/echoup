@@ -9,6 +9,7 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import { createClient } from '@/utils/supabase/client';
 import { toggleLikeState } from '@/actions/like';
 import { submitComment } from '@/actions/comment';
+import Video from './CustomVideoPlayer';
 
 type Props = {
     post: any
@@ -40,8 +41,8 @@ export default function Post({ post }: Props) {
         fetchUser();
     }, [supabase]);
 
-    // Safely handle both Drizzle camelCase and Supabase snake_case formatting
-    const images = post.imageUrl || post.image_url || [];
+    const images = post.image_url || [];
+    const videoUrl = post.video_url || null;
     const imageCount = images.length;
     const createdAt = post.createdAt || post.created_at;
     const authorFirstName = post.author?.firstName || post.author?.first_name;
@@ -205,7 +206,16 @@ export default function Post({ post }: Props) {
                         {post.content}
                     </Link>
                 )}
-
+                {
+                    videoUrl &&
+                    <div className="mt-3">
+                        <Video 
+                            src={post.video_url} 
+                            poster={post.video_url.replace('.mp4', '.jpg').replace('.webm', '.jpg')} 
+                            isReel={false} // Keeps it contained inside the post box
+                        />
+                    </div>
+                }
                 {imageCount > 0 && (
                     <div className='w-full border-y border-main-border bg-[#0a0a0a] max-h-150 overflow-hidden'>
                         {imageCount === 1 && (
