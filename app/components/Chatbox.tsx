@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { IoIosArrowDown, IoMdClose } from "react-icons/io";
 import { RiSendPlaneFill } from "react-icons/ri";
 import { format } from "date-fns";
-import { MdKeyboardArrowDown } from "react-icons/md";
+import { createPortal } from "react-dom"; // <-- Import createPortal
 
 type Message = {
     id: string;
@@ -22,43 +22,42 @@ type ChatBoxProps = {
 export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState("");
-
-    const [minimized, setMinimized] = useState(false)
+    const [minimized, setMinimized] = useState(false);
+    
+    // State to ensure we only use Portals on the client side
+    const [mounted, setMounted] = useState(false);
     
     const ws = useRef<WebSocket | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const friendFullName = `${friend.first_name} ${friend.last_name || ""}`.trim();
 
+    // Mark as mounted on client to prevent SSR errors
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
     // ==========================================
-    // WEBSOCKET CONNECTION (FastAPI)
+    // WEBSOCKET CONNECTION
     // ==========================================
     useEffect(() => {
-        // Replace this URL with your actual FastAPI WebSocket endpoint!
-        // Example: ws://localhost:8000/ws/chat/{currentUser.id}/{friend.id}
         const socketUrl = `ws://127.0.0.1:8000/ws/chat/${currentUser.id}/${friend.id}`;
-        
         ws.current = new WebSocket(socketUrl);
 
         ws.current.onopen = () => console.log(`Connected to chat with ${friend.username}`);
 
         ws.current.onmessage = (event) => {
             const incomingData = JSON.parse(event.data);
-            // Assuming FastAPI sends: { id, senderId, text, timestamp }
             setMessages((prev) => [...prev, incomingData]);
         };
 
         ws.current.onclose = () => console.log("Chat connection closed");
 
-        // Cleanup the socket when the user closes the chat box
         return () => {
-            if (ws.current) {
-                ws.current.close();
-            }
+            if (ws.current) ws.current.close();
         };
     }, [currentUser.id, friend.id, friend.username]);
 
-    // Auto-scroll to the bottom when a new message arrives
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
@@ -73,16 +72,13 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
         if (!text || !ws.current || ws.current.readyState !== WebSocket.OPEN) return;
 
         const newMessage = {
-            id: `msg-${Date.now()}`, // Temporary ID until backend confirms
+            id: `msg-${Date.now()}`, 
             senderId: currentUser.id,
             text: text,
             timestamp: new Date().toISOString()
         };
 
-        // 1. Send to FastAPI Backend
         ws.current.send(JSON.stringify(newMessage));
-
-        // 2. Optimistic UI Update (Show instantly on screen)
         setMessages((prev) => [...prev, newMessage]);
         setInputValue("");
     };
@@ -94,10 +90,16 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
         }
     };
 
-    return (
-        <div className={`absolute bottom-0 right-full w-[350px] ${minimized ? "h-fit" : "h-[450px]"} bg-primary border border-main-border rounded-t-xl shadow-2xl flex flex-col z-90 overflow-hidden`}>
+    // Prevent rendering until the client has loaded (required for createPortal)
+    if (!mounted) return null;
+
+    // THE FIX: Wrap the entire return inside createPortal()
+    return createPortal(
+        // Responsive Layout: Full width on mobile, 350px on desktop. Fixed positioning!
+        <div className={`fixed bottom-0 right-0 sm:right-4 lg:right-[370px] w-full sm:w-[350px] ${minimized ? "h-fit" : "h-[65vh] sm:h-[450px]"} bg-primary border-t sm:border border-main-border sm:rounded-t-xl rounded-t-xl shadow-2xl flex flex-col z-[100] overflow-hidden transition-all duration-300`}>
+            
             {/* HEADER */}
-            <div className="flex items-center justify-between px-4 py-3 bg-dark-clr border-b border-main-border shrink-0 cursor-pointer">
+            <div className="flex items-center justify-between px-4 py-3 bg-dark-clr border-b border-main-border shrink-0 cursor-pointer" onClick={() => setMinimized(!minimized)}>
                 <div className="flex relative items-center gap-3">
                     <div className="relative w-9 h-9 rounded-full overflow-hidden border border-main-border shrink-0 bg-main-blue flex items-center justify-center text-white font-bold">
                         {friend.profile_image ? (
@@ -114,10 +116,10 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
                     </div>
                 </div>
                 <div className="flex items-center gap-1">
-                    <button onClick={() => setMinimized(!minimized)} className={`${minimized ? "rotate-180" : "rotate-0"} text-gray-400 text-[18px] cursor-pointer hover:text-white transition-colors p-1 rounded-full hover:bg-white/10`}>
+                    <button className={`${minimized ? "rotate-180" : "rotate-0"} text-gray-400 text-[18px] cursor-pointer hover:text-white transition-all p-1 rounded-full hover:bg-white/10`}>
                         <IoIosArrowDown />
                     </button>
-                    <button onClick={onClose} className="text-gray-400 cursor-pointer hover:text-white transition-colors p-1 rounded-full hover:bg-white/10">
+                    <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="text-gray-400 cursor-pointer hover:text-white transition-colors p-1 rounded-full hover:bg-white/10">
                         <IoMdClose className="text-xl" />
                     </button>
                 </div>
@@ -151,7 +153,6 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
                         );
                     })
                 )}
-                {/* Auto-scroll anchor */}
                 <div ref={messagesEndRef} />
             </div>
 
@@ -178,6 +179,7 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
                     </button>
                 </form>
             </div>
-        </div>
+        </div>,
+        document.body // Teleports the component directly into the body tag!
     );
 }
