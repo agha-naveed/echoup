@@ -207,14 +207,26 @@ export default function Post({ post }: Props) {
                     </Link>
                 )}
                 {
-                    videoUrl &&
-                    <div className="mt-3">
+                    videoUrl && !post.is_reel &&
+                    <Link href={`/post/${post.id}`} className="mt-3">
                         <Video 
                             src={post.video_url} 
                             poster={post.video_url.replace('.mp4', '.jpg').replace('.webm', '.jpg')} 
                             isReel={false} // Keeps it contained inside the post box
+                            isPost={true}
                         />
-                    </div>
+                    </Link>
+                }
+                {
+                    videoUrl && post.is_reel &&
+                    <Link href={`/reels/${post.id}`} className="mt-3">
+                        <Video 
+                            src={post.video_url} 
+                            poster={post.video_url.replace('.mp4', '.jpg').replace('.webm', '.jpg')} 
+                            isReel={false} // Keeps it contained inside the post box
+                            isPost={true}
+                        />
+                    </Link>
                 }
                 {imageCount > 0 && (
                     <div className='w-full border-y border-main-border bg-[#0a0a0a] max-h-150 overflow-hidden'>

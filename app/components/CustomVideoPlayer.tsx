@@ -7,9 +7,10 @@ interface VideoPlayerProps {
     src: string;
     poster?: string;
     isReel?: boolean; // If true, it fills the screen. If false, it fits a standard post.
+    isPost?: boolean;
 }
 
-export default function Video({ src, poster, isReel = false }: VideoPlayerProps) {
+export default function Video({ src, poster, isReel = false, isPost = false }: VideoPlayerProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     
@@ -72,8 +73,10 @@ export default function Video({ src, poster, isReel = false }: VideoPlayerProps)
         <div 
             ref={containerRef}
             className={`relative w-full bg-black flex justify-center overflow-hidden cursor-pointer group ${
-                isReel ? "h-full" : "max-h-[500px] rounded-xl border border-main-border"
-            }`}
+                isReel ? "h-[90%]" : "h-[85%] rounded-xl border border-main-border"
+            }
+            ${isPost && "max-h-125 items-center"}
+            `}
             onClick={togglePlay}
         >
             {/* THE ACTUAL VIDEO (Controls Hidden) */}
@@ -87,7 +90,7 @@ export default function Video({ src, poster, isReel = false }: VideoPlayerProps)
                 onTimeUpdate={handleTimeUpdate}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
-                className={`w-full h-full ${isReel ? "object-cover sm:max-w-[450px]" : "object-contain"}`}
+                className={`w-full h-full ${isReel ? "object-cover sm:max-w-112.5" : "object-contain"}`}
             />
 
             {/* BIG PLAY BUTTON OVERLAY (Shows only when paused) */}
