@@ -8,7 +8,8 @@ import logo from '@/images/logo.png'
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
-import { formatDistanceToNowStrict } from "date-fns"; // Added for time formatting
+import { formatDistanceToNowStrict } from "date-fns";
+import { toggleFollowState } from "@/actions/follow";
 
 export default function Navbar() {
     const [toggleSearch, setToggleSearch] = useState(false);
@@ -21,32 +22,50 @@ export default function Navbar() {
     const [unreadCount, setUnreadCount] = useState(0);
     const supabase = createClient();
 
+    const [limitError, setLimitError] = useState({
+        follow: false
+    })
+
     // New state to track who we just followed back in this session
     const [followedBackIds, setFollowedBackIds] = useState<Set<string>>(new Set());
 
     const handleFollowBack = async (e: React.MouseEvent, senderId: string) => {
-        e.preventDefault(); // Prevents the outer <Link> from redirecting the page
+        e.preventDefault(); 
         e.stopPropagation();
 
-        if (!userProfile?.id || followedBackIds.has(senderId)) return;
+        if (!userProfile?.id) return;
 
-        // Optimistic UI update: instantly change button to "Following"
-        setFollowedBackIds(prev => new Set(prev).add(senderId));
+        // Determine if we are following or unfollowing
+        const isCurrentlyFollowing = followedBackIds.has(senderId);
+        const action = isCurrentlyFollowing ? "unfollow" : "follow";
 
-        try {
-            const { error } = await supabase.from("follows").insert({
-                follower_id: userProfile.id,
-                following_id: senderId
-            });
-            
-            // If they are already following, Supabase might throw a duplicate key error, which is safe to ignore here.
-            if (error && error.code !== '23505') throw error; 
-        } catch (error) {
-            console.error("Failed to follow back:", error);
-            // Revert state if it actually failed
+        // Optimistic UI update
+        setFollowedBackIds(prev => {
+            const next = new Set(prev);
+            if (action === "follow") {
+                next.add(senderId);
+            } else {
+                next.delete(senderId);
+            }
+            return next;
+        });
+
+        // Call the Redis Rate-Limited Action
+        const response = await toggleFollowState(userProfile.id, senderId, action);
+
+        if (!response.success) {
+            setLimitError({...limitError, follow: true})
+            setTimeout(() => {
+                setLimitError({...limitError, follow: false})
+            }, 10000)
+            // Revert state if rate limited or database fails
             setFollowedBackIds(prev => {
                 const next = new Set(prev);
-                next.delete(senderId);
+                if (action === "follow") {
+                    next.delete(senderId);
+                } else {
+                    next.add(senderId);
+                }
                 return next;
             });
         }
@@ -66,6 +85,20 @@ export default function Navbar() {
                     
                 if (profile) {
                     setUserProfile(profile);
+
+                    // =========================================================
+                    // NEW: Fetch all the people the current user is ALREADY following
+                    // =========================================================
+                    const { data: myFollows } = await supabase
+                        .from("follows")
+                        .select("following_id")
+                        .eq("follower_id", profile.id);
+                        
+                    if (myFollows) {
+                        // Pre-fill the state with the IDs of people we already follow
+                        const currentlyFollowing = new Set(myFollows.map((f: any) => f.following_id));
+                        setFollowedBackIds(currentlyFollowing);
+                    }
 
                     // 2. Fetch Notifications
                     const { data: notifs } = await supabase
@@ -180,7 +213,7 @@ export default function Navbar() {
                                     const hasFollowedBack = followedBackIds.has(senderId);
 
                                     return (
-                                        <div key={notif.id} onClick={() => router.push("/"+linkHref)} className={`flex items-start gap-3 px-4 py-3 border-b border-main-border transition-colors cursor-pointer hover:bg-white/5 ${!notif.is_read ? 'bg-main-blue/10' : ''}`}>
+                                        <div key={notif.id} onClick={() => router.push(linkHref)} className={`flex items-start gap-3 px-4 py-3 border-b border-main-border transition-colors cursor-pointer hover:bg-white/5 ${!notif.is_read ? 'bg-main-blue/10' : ''}`}>
                                             <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 bg-main-blue flex items-center justify-center text-white font-bold">
                                                 {sDP ? <Image src={sDP} alt="DP" width={40} height={40} className="w-full h-full object-cover" /> : sFName.charAt(0)}
                                             </div>
@@ -196,15 +229,18 @@ export default function Navbar() {
                                                     
                                                     {notif.type === "follow" && (
                                                         <button 
+                                                            disabled={limitError.follow}
                                                             onClick={(e) => handleFollowBack(e, senderId)}
-                                                            disabled={hasFollowedBack}
-                                                            className={`block mt-2 text-xs font-semibold px-3 py-1.5 rounded-md transition-all ${
+                                                            className={`block mt-2 text-xs font-semibold px-3 py-1.5 rounded-md transition-all ${limitError.follow && "bg-zinc-700 hover:bg-zinc-700 cursor-not-allowed"} ${
                                                                 hasFollowedBack 
-                                                                ? "bg-dark-clr border border-main-border text-foreground cursor-default" 
+                                                                ? "bg-dark-clr border border-main-border text-foreground cursor-pointer hover:bg-dark-clr/60" 
                                                                 : "bg-main-blue hover:bg-main-dark-blue text-white cursor-pointer"
                                                             }`}
                                                         >
-                                                            {hasFollowedBack ? "Following" : "Follow Back"}
+                                                            {
+                                                                limitError.follow ? "Try Again Later" :
+                                                                hasFollowedBack ? "Following" : "Follow Back"
+                                                            }
                                                         </button>
                                                     )}
                                                 </div>

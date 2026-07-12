@@ -3,6 +3,7 @@ import { useState } from "react";
 import { GoPlus } from "react-icons/go";
 import { HiOutlineDotsHorizontal } from "react-icons/hi";
 import { createClient } from "@/utils/supabase/client";
+import { toggleFollowState } from "@/actions/follow";
 
 type ProfileHeaderProps = {
     profile: any;
@@ -38,6 +39,20 @@ export default function ProfileHeader({
         // Optimistic UI Update
         setIsFollowing(!wasFollowing);
         setFollowersCount((prev) => wasFollowing ? prev - 1 : prev + 1);
+
+        const response = await toggleFollowState(
+            currentUserId, 
+            profile.id, 
+            wasFollowing ? "unfollow" : "follow"
+        );
+
+        if (!response.success) {
+            console.error(response.error);
+            // Revert the UI state because the server blocked it
+            setIsFollowing(wasFollowing);
+            setFollowersCount((prev) => wasFollowing ? prev + 1 : prev - 1);
+            alert(response.error); // Optional: Replace with a nice Toast notification
+        }
 
         try {
             if (wasFollowing) {

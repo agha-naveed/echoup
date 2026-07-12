@@ -38,6 +38,9 @@
       ],
       "@/schema/*": [
         "db/schema/*"
+      ],
+      "@/actions/*": [
+        "app/actions/*"
       ]
     }
   },
