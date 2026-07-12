@@ -21,6 +21,37 @@ export default function Navbar() {
     const [unreadCount, setUnreadCount] = useState(0);
     const supabase = createClient();
 
+    // New state to track who we just followed back in this session
+    const [followedBackIds, setFollowedBackIds] = useState<Set<string>>(new Set());
+
+    const handleFollowBack = async (e: React.MouseEvent, senderId: string) => {
+        e.preventDefault(); // Prevents the outer <Link> from redirecting the page
+        e.stopPropagation();
+
+        if (!userProfile?.id || followedBackIds.has(senderId)) return;
+
+        // Optimistic UI update: instantly change button to "Following"
+        setFollowedBackIds(prev => new Set(prev).add(senderId));
+
+        try {
+            const { error } = await supabase.from("follows").insert({
+                follower_id: userProfile.id,
+                following_id: senderId
+            });
+            
+            // If they are already following, Supabase might throw a duplicate key error, which is safe to ignore here.
+            if (error && error.code !== '23505') throw error; 
+        } catch (error) {
+            console.error("Failed to follow back:", error);
+            // Revert state if it actually failed
+            setFollowedBackIds(prev => {
+                const next = new Set(prev);
+                next.delete(senderId);
+                return next;
+            });
+        }
+    };
+
     useEffect(() => {
         const fetchUserAndData = async () => {
             const { data: { user } } = await supabase.auth.getUser();
@@ -45,6 +76,7 @@ export default function Navbar() {
                             is_read,
                             created_at,
                             post_id,
+                            sender_id,
                             sender:users!sender_id ( username, first_name, last_name, profile_image )
                         `)
                         .eq("recipient_id", profile.id)
@@ -134,34 +166,55 @@ export default function Navbar() {
                                     </div>
                                 ) : (
                                     notifications.map((notif: any) => {
-                                        const sFName = notif.sender?.first_name || "User";
-                                        const sDP = notif.sender?.profile_image;
-                                        
-                                        // Determine text and link based on notification type
-                                        let text = "";
-                                        let linkHref = `/@${notif.sender?.username}`; // Fallback to profile
-                                        if (notif.type === "like") { text = "liked your post."; linkHref = `/post/${notif.post_id}`; }
-                                        if (notif.type === "comment") { text = "commented on your post."; linkHref = `/post/${notif.post_id}`; }
-                                        if (notif.type === "follow") { text = "started following you."; }
+                                    const sFName = notif.sender?.first_name || "User";
+                                    const sDP = notif.sender?.profile_image;
+                                    const senderId = notif.sender_id; // Added to get the sender's ID
+                                    
+                                    // Determine text and link based on notification type
+                                    let text = "";
+                                    let linkHref = `/@${notif.sender?.username}`; 
+                                    if (notif.type === "like") { text = "liked your post."; linkHref = `/post/${notif.post_id}`; }
+                                    if (notif.type === "comment") { text = "commented on your post."; linkHref = `/post/${notif.post_id}`; }
+                                    if (notif.type === "follow") { text = "started following you."; }
 
-                                        return (
-                                            <Link key={notif.id} href={linkHref} className={`flex items-start gap-3 px-4 py-3 border-b border-main-border transition-colors hover:bg-white/5 ${!notif.is_read ? 'bg-main-blue/10' : ''}`}>
-                                                <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 bg-main-blue flex items-center justify-center text-white font-bold">
-                                                    {sDP ? <Image src={sDP} alt="DP" width={40} height={40} className="w-full h-full object-cover" /> : sFName.charAt(0)}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="text-sm text-foreground/90 leading-tight">
-                                                        <Link href={`/@${notif.sender.username}`} className="font-bold hover:underline cursor-pointer"
+                                    const hasFollowedBack = followedBackIds.has(senderId);
+
+                                    return (
+                                        <div key={notif.id} onClick={() => router.push("/"+linkHref)} className={`flex items-start gap-3 px-4 py-3 border-b border-main-border transition-colors cursor-pointer hover:bg-white/5 ${!notif.is_read ? 'bg-main-blue/10' : ''}`}>
+                                            <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 bg-main-blue flex items-center justify-center text-white font-bold">
+                                                {sDP ? <Image src={sDP} alt="DP" width={40} height={40} className="w-full h-full object-cover" /> : sFName.charAt(0)}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-sm text-foreground/90 leading-tight">
+                                                    <Link 
+                                                        href={`/@${notif.sender?.username}`} 
+                                                        className="font-bold hover:underline cursor-pointer"
                                                         title={notif?.sender?.first_name + " " + notif?.sender?.last_name}
-                                                        >{sFName}</Link> {text}
-                                                    </div>
-                                                    <span suppressHydrationWarning className="text-[11px] text-gray-500 mt-1 block">
-                                                        {formatDistanceToNowStrict(new Date(notif.created_at), { addSuffix: true })}
-                                                    </span>
+                                                    >
+                                                        {sFName}
+                                                    </Link> {text}
+                                                    
+                                                    {notif.type === "follow" && (
+                                                        <button 
+                                                            onClick={(e) => handleFollowBack(e, senderId)}
+                                                            disabled={hasFollowedBack}
+                                                            className={`block mt-2 text-xs font-semibold px-3 py-1.5 rounded-md transition-all ${
+                                                                hasFollowedBack 
+                                                                ? "bg-dark-clr border border-main-border text-foreground cursor-default" 
+                                                                : "bg-main-blue hover:bg-main-dark-blue text-white cursor-pointer"
+                                                            }`}
+                                                        >
+                                                            {hasFollowedBack ? "Following" : "Follow Back"}
+                                                        </button>
+                                                    )}
                                                 </div>
-                                            </Link>
-                                        )
-                                    })
+                                                <span suppressHydrationWarning className="text-[11px] text-gray-500 mt-1 block">
+                                                    {formatDistanceToNowStrict(new Date(notif.created_at), { addSuffix: true })}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )
+                                })
                                 )}
                             </div>
                         </div>
