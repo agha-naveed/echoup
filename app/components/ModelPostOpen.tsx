@@ -11,6 +11,8 @@ import Link from "next/link";
 import { formatDistanceToNowStrict } from "date-fns";
 import { GoComment, GoHeart, GoHeartFill } from "react-icons/go";
 import { createClient } from "@/utils/supabase/client";
+import { toggleLikeState } from '@/actions/like';
+import { submitComment } from '@/actions/comment';
 
 export default function ModelPostOpen({ initialPost, query }: { initialPost: any, query: any }) {
 
@@ -69,6 +71,9 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
     const navigate = useRouter();
     const pathname = usePathname();
 
+    const commentRef = useRef<HTMLDivElement>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     // ================ Handlers ================
 
     const handleLike = () => {
@@ -76,31 +81,21 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
         
         const wasLiked = isLiked;
 
+        // Optimistic UI Update
         if (wasLiked) {
             setLikes((prev: any[]) => prev.filter(l => !((l.userId ?? l.user_id) === currentUser.id && (l.photoIndex ?? l.photo_index) === currentIndex)));
         } else {
-            setLikes((prev: any[]) => [
-                ...prev,
-                { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: currentIndex }
-            ]);
+            setLikes((prev: any[]) => [...prev, { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: currentIndex }]);
         }
 
         if (likeTimeoutRef.current) clearTimeout(likeTimeoutRef.current);
 
         likeTimeoutRef.current = setTimeout(async () => {
-            try {
-                if (wasLiked) {
-                    await supabase.from("likes").delete()
-                        .match({ post_id: post.id, user_id: currentUser.id, photo_index: currentIndex });
-                } else {
-                    await supabase.from("likes").insert({
-                        post_id: post.id,
-                        user_id: currentUser.id,
-                        photo_index: currentIndex
-                    });
-                }
-            } catch (error) {
-                console.error("Failed to sync like with server");
+            const response = await toggleLikeState(currentUser.id, post.id, currentIndex, wasLiked ? "unlike" : "like");
+
+            if (!response.success) {
+                console.error(response.error);
+                // Revert state if blocked
                 if (wasLiked) {
                     setLikes((prev: any[]) => [...prev, { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: currentIndex }]);
                 } else {
@@ -164,15 +159,13 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
 
     // ================ Comments ================
 
-    const commentRef = useRef<HTMLDivElement>(null);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
     const handleCommentSubmit = async () => {
         const text = commentRef.current?.innerText.trim();
         if (!text || isSubmitting || !post?.id || !currentUser) return;
 
         setIsSubmitting(true);
 
+        // Optimistic UI Update
         const temporaryComment = {
             id: `temp-${Date.now()}`,
             content: text,
@@ -190,21 +183,16 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
         if (commentRef.current) commentRef.current.innerText = "";
         setIsEmpty(true);
 
-        try {
-            const { error } = await supabase.from("comments").insert({
-                post_id: post.id,
-                content: text,
-                photo_index: currentIndex,
-                author_id: currentUser.id
-            });
+        // Call Server Action
+        const response = await submitComment(currentUser.id, post.id, text, currentIndex);
 
-            if (error) throw error;
-        } catch (error) {
-            console.error("Failed to add comment");
-            setRealComments((prevComments: any) => prevComments.filter((c: any) => c.id !== temporaryComment.id));
-        } finally {
-            setIsSubmitting(false);
+        if (!response.success) {
+            console.error(response.error);
+            alert(response.error); // Optional alert
+            setRealComments((prevComments: any) => prevComments.filter((c: any) => c.id !== temporaryComment.id)); // Revert UI
         }
+        
+        setIsSubmitting(false);
     };
 
     const handleBack = () => {

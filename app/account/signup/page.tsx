@@ -4,7 +4,7 @@ import Image from "next/image"
 import Link from "next/link";
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { signUpFormSchema, type SignUpFormValues } from "@/db/schema/user";
+import { signUpFormSchema, type SignUpFormValues } from "@/schema/user";
 import { createClient } from "@/utils/supabase/client";
 import { GoMail } from "react-icons/go";
 import { LuLockKeyhole } from "react-icons/lu";

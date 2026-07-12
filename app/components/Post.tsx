@@ -3,11 +3,12 @@ import Image from 'next/image'
 import { GoHeart, GoHeartFill, GoComment } from "react-icons/go";
 import { RiShareForward2Line } from "react-icons/ri";
 import { HiOutlineDotsHorizontal } from "react-icons/hi";
-import { PostType } from '../types/post'; // Note: You may need to update this type to match Supabase snake_case!
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { createClient } from '@/utils/supabase/client';
+import { toggleLikeState } from '@/actions/like';
+import { submitComment } from '@/actions/comment';
 
 type Props = {
     post: any // Temporarily using 'any' to avoid TS errors during the snake_case transition
@@ -48,7 +49,10 @@ export default function Post({ post }: Props) {
 
     const [likes, setLikes] = useState<any[]>(post?.likes || []);
     const [comments, setComments] = useState<any[]>(post?.comments || []);
-    
+
+    const [feedComment, setFeedComment] = useState("");
+    const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+
     // Start by showing 1 comment
     const [visibleCount, setVisibleCount] = useState(1);
 
@@ -76,41 +80,22 @@ export default function Post({ post }: Props) {
 
         const wasLiked = isLiked;
 
-        // 1. Optimistic Update for the general feed
+        // 1. Optimistic Update
         if (wasLiked) {
             setLikes(prev => prev.filter(l => !((l.userId === currentUser.id || l.user_id === currentUser.id) && (l.photoIndex === null || l.photo_index === null))));
         } else {
-            setLikes(prev => [
-                ...prev,
-                { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: null }
-            ]);
+            setLikes(prev => [...prev, { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: null }]);
         }
 
-        // 2. Debounce
+        // 2. Debounce -> Call Server Action
         if (likeTimeoutRef.current) clearTimeout(likeTimeoutRef.current);
 
         likeTimeoutRef.current = setTimeout(async () => {
-            try {
-                if (wasLiked) {
-                    // Delete the like directly from Supabase
-                    await supabase
-                        .from('likes')
-                        .delete()
-                        .match({ post_id: post.id, user_id: currentUser.id })
-                        .is('photo_index', null);
-                } else {
-                    // Insert the like directly into Supabase
-                    await supabase
-                        .from('likes')
-                        .insert({
-                            post_id: post.id,
-                            user_id: currentUser.id,
-                            photo_index: null
-                        });
-                }
-            } catch (error) {
-                console.error("Failed to sync like with server");
-                // Revert state on failure
+            const response = await toggleLikeState(currentUser.id, post.id, null, wasLiked ? "unlike" : "like");
+            
+            if (!response.success) {
+                console.error(response.error);
+                // Revert state if Redis blocked them
                 if (wasLiked) {
                     setLikes(prev => [...prev, { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: null }]);
                 } else {
@@ -120,9 +105,6 @@ export default function Post({ post }: Props) {
         }, 800);
     };
 
-    const [feedComment, setFeedComment] = useState("");
-    const [isSubmittingComment, setIsSubmittingComment] = useState(false);
-
     const handleFeedCommentSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const text = feedComment.trim();
@@ -130,7 +112,7 @@ export default function Post({ post }: Props) {
 
         setIsSubmittingComment(true);
 
-        // 1. OPTIMISTIC UI: Instantly create a fake comment for the feed
+        // 1. Optimistic UI
         const tempComment = {
             id: `temp-comment-${Date.now()}`,
             content: text,
@@ -144,26 +126,19 @@ export default function Post({ post }: Props) {
             }
         };
 
-        // 2. Instantly push it to the top of the comments array
         setComments(prev => [tempComment, ...prev]);
         setFeedComment("");
 
-        try {
-            // 3. Save it to PostgreSQL directly via Supabase Client
-            await supabase
-                .from('comments')
-                .insert({
-                    post_id: post.id,
-                    content: text,
-                    photo_index: null,
-                    author_id: currentUser.id
-                });
-        } catch (error) {
-            console.error("Failed to post comment");
-            setComments(prev => prev.filter(c => c.id !== tempComment.id));
-        } finally {
-            setIsSubmittingComment(false);
+        // 2. Call Server Action
+        const response = await submitComment(currentUser.id, post.id, text, null);
+
+        if (!response.success) {
+            console.error(response.error);
+            alert(response.error); // Optional: Show a toast letting them know they commented too fast
+            setComments(prev => prev.filter(c => c.id !== tempComment.id)); // Revert UI
         }
+        
+        setIsSubmittingComment(false);
     };
 
     useEffect(() => {
