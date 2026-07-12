@@ -11,12 +11,17 @@ import { toggleLikeState } from '@/actions/like';
 import { submitComment } from '@/actions/comment';
 
 type Props = {
-    post: any // Temporarily using 'any' to avoid TS errors during the snake_case transition
+    post: any
 }
 
 export default function Post({ post }: Props) {
     const supabase = createClient();
     const [currentUser, setCurrentUser] = useState<any>(null);
+
+    const [limitError, setLimitError] = useState({
+        comment: false,
+        like: false
+    })
 
     // Fetch the active Supabase user on mount
     useEffect(() => {
@@ -53,16 +58,12 @@ export default function Post({ post }: Props) {
     const [feedComment, setFeedComment] = useState("");
     const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
-    // Start by showing 1 comment
     const [visibleCount, setVisibleCount] = useState(1);
 
-    // 1. Get ONLY the general collage comments (safely checking both casing styles)
     const generalComments = comments.filter((c: any) => c.photoIndex === null || c.photo_index === null);
 
-    // 2. Slice the array to only show the allowed amount
     const visibleComments = generalComments.slice(0, visibleCount);
 
-    // 3. Derived state for the buttons
     const generalLikes = likes.filter((l: any) => l.photoIndex === null || l.photo_index === null);
     const isLiked = generalLikes.some((l: any) => l.userId === currentUser?.id || l.user_id === currentUser?.id);
 
@@ -71,12 +72,13 @@ export default function Post({ post }: Props) {
     const totalShares = post?.shares?.length || 0;
 
     const likeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const [likeAnimation, setLikeAnimation] = useState(false);
 
-    // ==========================================
+    // =====================================================
     // FEED LIKE LOGIC (Optimistic UI + Debounce + Supabase)
-    // ==========================================
+    // =====================================================
     const handleLike = () => {
-        if (!post?.id || !currentUser) return;
+        if (!post?.id || !currentUser || limitError.like) return; // Prevent clicking if locked
 
         const wasLiked = isLiked;
 
@@ -85,6 +87,9 @@ export default function Post({ post }: Props) {
             setLikes(prev => prev.filter(l => !((l.userId === currentUser.id || l.user_id === currentUser.id) && (l.photoIndex === null || l.photo_index === null))));
         } else {
             setLikes(prev => [...prev, { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: null }]);
+            
+            setLikeAnimation(true);
+            setTimeout(() => setLikeAnimation(false), 800); // Hide it after the animation finishes
         }
 
         // 2. Debounce -> Call Server Action
@@ -94,8 +99,13 @@ export default function Post({ post }: Props) {
             const response = await toggleLikeState(currentUser.id, post.id, null, wasLiked ? "unlike" : "like");
             
             if (!response.success) {
-                console.error(response.error);
-                // Revert state if Redis blocked them
+                // Trigger the rate limit lock for 10 seconds
+                setLimitError(prev => ({ ...prev, like: true }));
+                setTimeout(() => {
+                    setLimitError(prev => ({ ...prev, like: false }));
+                }, 10000);
+
+                // Revert state because Redis blocked them
                 if (wasLiked) {
                     setLikes(prev => [...prev, { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: null }]);
                 } else {
@@ -133,9 +143,11 @@ export default function Post({ post }: Props) {
         const response = await submitComment(currentUser.id, post.id, text, null);
 
         if (!response.success) {
-            console.error(response.error);
-            alert(response.error); // Optional: Show a toast letting them know they commented too fast
-            setComments(prev => prev.filter(c => c.id !== tempComment.id)); // Revert UI
+            setLimitError({...limitError, comment: true})
+            setTimeout(() => {
+                setLimitError({...limitError, comment: false})
+            }, 10000)
+            setComments(prev => prev.filter(c => c.id !== tempComment.id));
         }
         
         setIsSubmittingComment(false);
@@ -234,10 +246,26 @@ export default function Post({ post }: Props) {
             <div className='px-3 py-3 flex items-center gap-0.5 text-foreground'>
                 <button
                     onClick={handleLike}
-                    className={`flex items-center gap-2 md:text-[19px] text-[16px] transition-all hover:bg-dark-clr/50 md:px-4 px-3 py-1.5 rounded-full ${isLiked ? 'text-red-500' : 'hover:text-red-500'}`}
+                    disabled={limitError.like}
+                    title={limitError.like ? "Try again in a few seconds..." : "Like"}
+                    className={`flex items-center gap-2 md:text-[19px] text-[16px] transition-all px-3 py-1.5 rounded-full
+                        ${limitError.like 
+                            ? 'opacity-50 cursor-not-allowed' 
+                            : 'hover:bg-dark-clr/50 cursor-pointer'}
+                        ${isLiked ? 'text-red-500' : 'hover:text-red-500'}
+                    `}
                 >
-                    {isLiked ? <GoHeartFill /> : <GoHeart />}
-                    <span className='md:text-[17px] text-[15px]'>{totalLikes}</span>
+                    {/* Wrap the icons in a relative container */}
+                    <div className="relative flex items-center justify-center">
+                        {isLiked ? <GoHeartFill className="text-[22px]" /> : <GoHeart className="text-[22px]" />}
+                        
+                        {/* The Animated Floating Heart */}
+                        {likeAnimation && (
+                            <GoHeartFill className="absolute text-[22px] text-red-500 animate-float-up pointer-events-none" />
+                        )}
+                    </div>
+                    
+                    <span className='md:text-[17px] text-[15px] font-medium'>{totalLikes}</span>
                 </button>
                 <div className='md:text-[19px] text-[16px] cursor-pointer flex items-center gap-2 transition-all hover:bg-dark-clr/50 hover:text-main-blue md:px-4 px-3 py-1.5 rounded-full'>
                     <GoComment />
@@ -329,10 +357,10 @@ export default function Post({ post }: Props) {
                     <div className='flex-1 bg-dark-clr/20 hover:bg-dark-clr/40 transition-colors rounded-full px-4 py-1.5 flex items-center border border-main-border focus-within:border-main-blue/50 focus-within:bg-dark-clr/40'>
                         <input
                             type="text"
-                            placeholder="Add a comment..."
+                            placeholder={limitError.comment ? "Try Again in Few Seconds..." : "Add a comment..."}
                             value={feedComment}
                             onChange={(e) => setFeedComment(e.target.value)}
-                            disabled={isSubmittingComment || !currentUser}
+                            disabled={isSubmittingComment || !currentUser || limitError.comment}
                             className='bg-transparent border-none outline-none w-full text-[14px] text-foreground placeholder:text-gray-500 disabled:opacity-50'
                         />
 
