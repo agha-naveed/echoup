@@ -36,6 +36,7 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
         fetchUser();
     }, [supabase]);
 
+    console.log(initialPost)
     const photoQuery = query.photo;
     const initialIndex = photoQuery ? +photoQuery - 1 : 0;
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
@@ -471,14 +472,6 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
 
                         <div className="w-full lg:w-[70vw] h-full relative bg-black flex items-center justify-center group/slider">
                             <div className="w-full h-full relative flex items-center justify-center">
-                                <video
-                                    src={hasVideo}
-                                    className='w-full h-full object-cover blur-3xl opacity-40 absolute top-0 z-0'
-                                    muted
-                                    autoPlay
-                                    width={100}
-                                    height={100}
-                                />
                                 <Video
                                     src={hasVideo}
                                     isReel={false}

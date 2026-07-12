@@ -12,13 +12,14 @@ import { createClient } from "@/utils/supabase/client";
 const CreatePost = () => {
     const router = useRouter();
     const supabase = createClient();
-    
+
     const [currentUser, setCurrentUser] = useState<any>(null);
 
     const [isFocus, setIsFocus] = useState(false);
     const [isEmpty, setIsEmpty] = useState(true);
     const [isPosting, setIsPosting] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const blurTimeout = useRef<NodeJS.Timeout | null>(null);
 
     // Image states
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -26,11 +27,13 @@ const CreatePost = () => {
 
     // NEW: Video state
     const [selectedVideo, setSelectedVideo] = useState<File | null>(null);
+    const [isReel, setIsReel] = useState(false);
 
     const contentRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const videoInputRef = useRef<HTMLInputElement>(null); // NEW: Ref for video input
-
+    const containerRef = useRef<HTMLDivElement>(null);
+    
     useEffect(() => {
         const fetchUser = async () => {
             const { data: { user } } = await supabase.auth.getUser();
@@ -87,7 +90,7 @@ const CreatePost = () => {
         const remainingFiles = selectedFiles.filter((_, i) => i !== indexToRemove);
         setSelectedFiles(remainingFiles);
         setPreviewUrls((prev) => prev.filter((_, i) => i !== indexToRemove));
-        
+
         if (remainingFiles.length === 0 && !(contentRef.current?.innerText.trim())) {
             setIsEmpty(true);
         }
@@ -110,7 +113,7 @@ const CreatePost = () => {
         }
 
         // 10MB restriction
-        const MAX_FILE_SIZE = 10 * 1024 * 1024; 
+        const MAX_FILE_SIZE = 10 * 1024 * 1024;
         if (file.size > MAX_FILE_SIZE) {
             setErrorMsg("Video is too large! Maximum file size is 10MB.");
             return;
@@ -161,7 +164,7 @@ const CreatePost = () => {
                 const formData = new FormData();
                 formData.append("file", selectedVideo);
                 formData.append("upload_preset", "my-images"); // Standard unsigned presets usually accept video too
-                
+
                 // IMPORTANT: Notice the URL uses /video/upload instead of /image/upload
                 const response = await axios.post(
                     `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/video/upload`,
@@ -175,8 +178,9 @@ const CreatePost = () => {
                 .from("posts")
                 .insert({
                     content: text,
-                    image_url: uploadedImageUrls, 
-                    video_url: uploadedVideoUrl, // NEW: Make sure you add a `video_url` (text) column to your `posts` table!
+                    image_url: uploadedImageUrls,
+                    video_url: uploadedVideoUrl,
+                    is_reel: isReel,
                     author_id: currentUser.id
                 });
 
@@ -199,20 +203,24 @@ const CreatePost = () => {
     };
 
     return (
-        <div className={`flex flex-col gap-2 px-5 py-3 bg-primary w-full rounded-xl text-foreground/80 border transition-all ${isFocus ? "border-foreground/40 shadow-[0_2px_15px_#a3a3a334]" : "border-main-border"}`}
-            onFocus={(e) => {
-                if (e.currentTarget.contains(e.target)) setIsFocus(true);
-            }}
+        <div ref={containerRef}
+        tabIndex={-1} className={`flex flex-col gap-2 px-5 py-3 bg-primary w-full rounded-xl text-foreground/80 border transition-all ${isFocus ? "border-foreground/40 shadow-[0_2px_15px_#a3a3a334]" : "border-main-border"}`}
+            onFocus={() => setIsFocus(true)}
             onBlur={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget)) setIsFocus(false);
-            }}>
+                // If the new focus is still inside the container, do nothing
+                if (containerRef.current && containerRef.current.contains(e.relatedTarget as Node)) {
+                    return;
+                }
+                setIsFocus(false);
+            }}
+        >
 
             {errorMsg && (
                 <div className="text-red-400 text-sm font-medium px-2 pb-1">
                     {errorMsg}
                 </div>
             )}
-            
+
             <div>
                 <div className="flex gap-3 w-full">
                     <div className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden mt-2 border border-main-border">
@@ -239,7 +247,7 @@ const CreatePost = () => {
                 </div>
 
                 {/* --- MEDIA PREVIEWS --- */}
-                
+
                 {/* Image Previews */}
                 {previewUrls.length > 0 && (
                     <div className={`flex gap-3 mt-5`}>
@@ -263,14 +271,25 @@ const CreatePost = () => {
                 {/* Video Preview */}
                 {selectedVideo && (
                     <div className="relative group w-fit mt-5">
-                        <video 
-                            src={URL.createObjectURL(selectedVideo)} 
-                            className="max-h-[300px] rounded-xl border border-main-border object-cover" 
-                            controls 
+                        {/* Toggle switch for Reel */}
+                        <label className={`absolute top-2 -left-2 z-10 flex items-center gap-1.5 rounded-xl px-3 py-1 text-[14px] font-medium cursor-pointer transition-colors ${isReel ? "bg-emerald-600 text-white" : "bg-gray-700 text-gray-300"}`}>
+                            <input
+                                type="checkbox"
+                                checked={isReel}
+                                onChange={(e) => setIsReel(e.target.checked)}
+                                className="accent-white w-2.5"
+                            />
+                            Reel
+                        </label>
+
+                        <video
+                            src={URL.createObjectURL(selectedVideo)}
+                            className="max-h-[200px] rounded-xl border border-main-border object-cover"
+                            controls
                         />
                         <button
                             type="button"
-                            onClick={removeVideo}
+                            onClick={() => { removeVideo(); setIsReel(false); }} // Reset isReel when removed
                             className="absolute -top-3 -right-3 bg-red-500 hover:bg-red-600 text-white p-1 rounded-full shadow-lg transition-colors cursor-pointer"
                         >
                             <IoMdClose size={18} />
@@ -301,6 +320,7 @@ const CreatePost = () => {
                     {/* Image Button */}
                     <button
                         type="button"
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => fileInputRef.current?.click()}
                         className="p-[6px] transition-all hover:bg-dark-clr rounded-lg cursor-pointer"
                         title="Add Image"
@@ -309,15 +329,16 @@ const CreatePost = () => {
                     </button>
 
                     {/* Video Button */}
-                    <button 
-                        type="button" 
+                    <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => videoInputRef.current?.click()}
                         className="p-[6px] transition-all hover:bg-dark-clr rounded-lg cursor-pointer"
                         title="Add Video/Reel"
                     >
                         <MdOutlineOndemandVideo className="text-[19px]" />
                     </button>
-                    
+
                     <button type="button" className="p-[6px] transition-all hover:bg-dark-clr rounded-lg cursor-pointer">
                         <FiFileText className="text-[19px]" />
                     </button>
@@ -325,7 +346,7 @@ const CreatePost = () => {
 
                 <button
                     type="button"
-                    onClick={handlePostSubmit}
+                    onClick={() => {handlePostSubmit(); setIsFocus(false)}}
                     disabled={isEmpty || isPosting || !currentUser}
                     className={`btn-gradient ${isEmpty || !currentUser ? "opacity-50 cursor-not-allowed!" : "cursor-pointer"} flex items-center justify-center min-w-[70px]`}
                 >

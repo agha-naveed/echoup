@@ -23,6 +23,7 @@ export default async function Page({
             content,
             created_at,
             image_url,
+            video_url,
             author:users ( 
                 id,
                 username, 
