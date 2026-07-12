@@ -5,6 +5,7 @@ import { IoIosArrowDown, IoMdClose } from "react-icons/io";
 import { RiSendPlaneFill } from "react-icons/ri";
 import { format } from "date-fns";
 import { createPortal } from "react-dom"; // <-- Import createPortal
+import { createClient } from "@/utils/supabase/client";
 
 type Message = {
     id: string;
@@ -23,6 +24,9 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState("");
     const [minimized, setMinimized] = useState(false);
+
+    const supabase = createClient();
+    const [isLoadingHistory, setIsLoadingHistory] = useState(true);
     
     // State to ensure we only use Portals on the client side
     const [mounted, setMounted] = useState(false);
@@ -83,6 +87,43 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
         setInputValue("");
     };
 
+
+    // ==========================================
+    // FETCH CHAT HISTORY (Supabase)
+    // ==========================================
+    useEffect(() => {
+        const fetchHistory = async () => {
+            const { data, error } = await supabase
+                .from("messages")
+                .select("*")
+                // Trick: Get messages where (sender is ME or receiver is ME) AND (sender is FRIEND or receiver is FRIEND)
+                .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
+                .or(`sender_id.eq.${friend.id},receiver_id.eq.${friend.id}`)
+                .order("created_at", { ascending: true }); // Ascending so the oldest is at the top!
+
+            if (data) {
+                // Map the database columns to match your Message type
+                const formattedMessages = data.map((msg: any) => ({
+                    id: msg.id,
+                    senderId: msg.sender_id,
+                    text: msg.text,
+                    timestamp: msg.created_at
+                }));
+                
+                // If you already have some live messages, we merge them (history first, live messages second)
+                setMessages((prev) => {
+                    // Prevent duplicates if WebSocket pushed a message while history was loading
+                    const existingIds = new Set(prev.map(p => p.id));
+                    const newHistory = formattedMessages.filter((m:any) => !existingIds.has(m.id));
+                    return [...newHistory, ...prev];
+                });
+            }
+            setIsLoadingHistory(false);
+        };
+
+        fetchHistory();
+    }, [currentUser.id, friend.id, supabase]);
+
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === "Enter") {
             e.preventDefault();
@@ -127,7 +168,11 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
 
             {/* MESSAGES AREA */}
             <div className={`${minimized ? "hidden" : "flex"} flex-1 p-4 overflow-y-auto custom-scroll flex-col gap-3 bg-primary/50`}>
-                {messages.length === 0 ? (
+                {isLoadingHistory ? (
+                    <div className="flex-1 flex items-center justify-center text-gray-500 text-sm animate-pulse">
+                        Loading messages...
+                    </div>
+                ) : messages.length === 0 ? (
                     <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
                         Say hi to {friend.first_name}!
                     </div>
@@ -138,7 +183,7 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
                         return (
                             <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-full`}>
                                 <div 
-                                    className={`px-4 py-2 text-[14px] rounded-[18px] max-w-[85%] wrap-break-words ${
+                                    className={`px-4 py-2 text-[14px] rounded-[18px] max-w-[85%] break-words ${
                                         isMe 
                                         ? "bg-main-blue text-white rounded-br-sm" 
                                         : "bg-dark-clr text-foreground border border-main-border rounded-bl-sm"
@@ -153,6 +198,7 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
                         );
                     })
                 )}
+                {/* Auto-scroll anchor */}
                 <div ref={messagesEndRef} />
             </div>
 

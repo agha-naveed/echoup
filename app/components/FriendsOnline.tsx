@@ -1,10 +1,10 @@
 "use client"
 import Image from "next/image"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { createClient } from "@/utils/supabase/client"
 import ChatBox from "./Chatbox"
 import { IoMdClose } from "react-icons/io"
-import { RiMessage3Fill } from "react-icons/ri" // Import the Message Icon!
+import { RiMessage3Fill } from "react-icons/ri"
 
 export default function FriendsOnline({ isMobile = false }: { isMobile?: boolean }) {
     const [friends, setFriends] = useState<any[]>([]);
@@ -12,16 +12,21 @@ export default function FriendsOnline({ isMobile = false }: { isMobile?: boolean
     
     const [currentUser, setCurrentUser] = useState<any>(null);
     const [activeChat, setActiveChat] = useState<any>(null);
-    
-    // State to toggle the mobile friend drawer
     const [showMobileList, setShowMobileList] = useState(false);
     
+    // NEW: Ref to track activeChat inside the Realtime listener without re-triggering it
+    const activeChatRef = useRef(activeChat);
+    
     const supabase = createClient();
+
+    // Keep the ref updated with the latest state
+    useEffect(() => {
+        activeChatRef.current = activeChat;
+    }, [activeChat]);
 
     useEffect(() => {
         const fetchData = async () => {
             const { data: { user } } = await supabase.auth.getUser();
-            
             if (!user) {
                 setIsLoading(false);
                 return;
@@ -49,12 +54,77 @@ export default function FriendsOnline({ isMobile = false }: { isMobile?: boolean
                 const formattedFriends = data.map((f: any) => f.following).filter(Boolean);
                 setFriends(formattedFriends);
             }
-            
             setIsLoading(false);
         };
 
         fetchData();
     }, [supabase]);
+
+    // ==========================================
+    // NEW: BACKGROUND NOTIFICATION LISTENER
+    // ==========================================
+    useEffect(() => {
+        if (!currentUser) return;
+
+        // Ask the user for permission to show browser pop-ups
+        if ("Notification" in window && Notification.permission === "default") {
+            Notification.requestPermission();
+        }
+
+        // Subscribe to Supabase Realtime for new messages sent to ME
+        // Subscribe to Supabase Realtime for new messages sent to ME
+        const messageSubscription = supabase
+            .channel(`chat-notifications-${currentUser.id}-${Date.now()}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'messages',
+                    filter: `receiver_id=eq.${currentUser.id}`
+                },
+                async (payload) => {
+                    const newMsg = payload.new;
+
+                    // 1. Check if the chatbox for this sender is currently open
+                    const isChatOpen = activeChatRef.current?.id === newMsg.sender_id;
+                    
+                    // 2. Check if the user is on another tab or minimized the browser
+                    const isPageHidden = document.hidden;
+
+                    // THE LOGIC: Notify if the chat is closed OR if the tab is hidden
+                    if (!isChatOpen || isPageHidden) {
+                        
+                        // Play the Beep Sound 
+                        const audio = new Audio('/sounds/beep.mp3');
+                        audio.play().catch((err) => console.log("Audio play blocked by browser:", err));
+
+                        // Fetch the sender's name
+                        const { data: sender } = await supabase
+                            .from('users')
+                            .select('first_name, last_name')
+                            .eq('id', newMsg.sender_id)
+                            .single();
+
+                        const senderName = sender ? `${sender.first_name} ${sender.last_name || ''}`.trim() : "Someone";
+
+                        // Show standard Browser Notification
+                        if ("Notification" in window && Notification.permission === "granted") {
+                            new Notification(`New message from ${senderName}`, {
+                                body: newMsg.text,
+                            });
+                        }
+                    }
+                }
+            )
+            .subscribe();
+
+        // Cleanup listener when component unmounts
+        return () => {
+            supabase.removeChannel(messageSubscription);
+        };
+    }, [currentUser, supabase]);
+
 
     if (isLoading || friends.length === 0) return null; 
 
@@ -64,7 +134,6 @@ export default function FriendsOnline({ isMobile = false }: { isMobile?: boolean
     if (isMobile) {
         return (
             <>
-                {/* Floating Messages Button */}
                 <button
                     onClick={() => setShowMobileList(true)}
                     className="fixed bottom-6 right-6 w-14 h-14 bg-main-blue text-white rounded-full shadow-2xl flex items-center justify-center text-[28px] z-[90] hover:bg-main-dark-blue transition-transform hover:scale-105"
@@ -72,12 +141,10 @@ export default function FriendsOnline({ isMobile = false }: { isMobile?: boolean
                     <RiMessage3Fill />
                 </button>
 
-                {/* Mobile Slide-Up Drawer */}
                 {showMobileList && (
                     <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/60 backdrop-blur-[2px]" onClick={() => setShowMobileList(false)}>
                         <div className="bg-primary w-full h-[75vh] rounded-t-3xl flex flex-col overflow-hidden shadow-[0_-10px_40px_rgba(0,0,0,0.5)] border-t border-main-border" onClick={e => e.stopPropagation()}>
                             
-                            {/* Drawer Header */}
                             <div className="flex items-center justify-between px-6 py-4 border-b border-main-border bg-dark-clr">
                                 <h3 className="text-foreground text-[19px] font-bold">Messages</h3>
                                 <button onClick={() => setShowMobileList(false)} className="text-gray-400 hover:text-white text-[26px] transition-colors bg-white/5 rounded-full p-1.5">
@@ -85,7 +152,6 @@ export default function FriendsOnline({ isMobile = false }: { isMobile?: boolean
                                 </button>
                             </div>
 
-                            {/* Drawer Friends List */}
                             <div className="flex-1 overflow-y-auto custom-scroll pb-10">
                                 {friends.map((item) => {
                                     const fullName = `${item.first_name || "User"} ${item.last_name || ""}`.trim();
@@ -113,7 +179,6 @@ export default function FriendsOnline({ isMobile = false }: { isMobile?: boolean
                     </div>
                 )}
 
-                {/* Render the portaled ChatBox */}
                 {activeChat && currentUser && (
                     <ChatBox currentUser={currentUser} friend={activeChat} onClose={() => setActiveChat(null)} />
                 )}
@@ -154,7 +219,6 @@ export default function FriendsOnline({ isMobile = false }: { isMobile?: boolean
                 })}
             </div>
 
-            {/* Render the portaled ChatBox */}
             {activeChat && currentUser && (
                 <ChatBox currentUser={currentUser} friend={activeChat} onClose={() => setActiveChat(null)} />
             )}
