@@ -22,6 +22,10 @@ export default function Navbar() {
     const [unreadCount, setUnreadCount] = useState(0);
     const supabase = createClient();
 
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+
     const [limitError, setLimitError] = useState({
         follow: false
     })
@@ -70,6 +74,38 @@ export default function Navbar() {
             });
         }
     };
+
+
+    useEffect(() => {
+        const fetchSearchResults = async () => {
+            if (!searchQuery.trim()) {
+                setSearchResults([]);
+                setIsSearching(false);
+                return;
+            }
+
+            setIsSearching(true);
+            
+            // Search Supabase for users matching the query
+            const { data, error } = await supabase
+                .from("users")
+                .select("id, username, first_name, last_name, profile_image")
+                .or(`username.ilike.%${searchQuery}%,first_name.ilike.%${searchQuery}%,last_name.ilike.%${searchQuery}%`)
+                .limit(5); // Show top 5 results
+
+            if (data) {
+                setSearchResults(data);
+            }
+            setIsSearching(false);
+        };
+
+        // Wait 500ms after the user stops typing before fetching
+        const delayDebounceFn = setTimeout(() => {
+            fetchSearchResults();
+        }, 500);
+
+        return () => clearTimeout(delayDebounceFn);
+    }, [searchQuery, supabase]);
 
     useEffect(() => {
         const fetchUserAndData = async () => {
@@ -165,13 +201,78 @@ export default function Navbar() {
             <div className="bg-light-clr w-full py-3 px-5 flex items-center justify-between">
                 <>
                     <div onClick={() => setToggleSearch(false)} className={`fixed inset-0 bg-black/30 backdrop-blur-[2px] transition-opacity duration-300 ease-out ${toggleSearch ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`} />
+                    
                     <div className="relative flex items-center md:ml-6" ref={searchRef}>
+                        {/* Desktop Icon */}
                         <IoIosSearch className="md:text-[22px] text-[40px] block text-foreground md:absolute md:p-0 p-2 rounded-full md:left-[18px]" onClick={() => setToggleSearch(true)} />
-                        <input type="text" placeholder="Search" className="bg-primary md:block hidden outline-none border border-main-border focus:border-main-blue/20 py-2 pr-6 pl-[48px] w-[400px] rounded-full" onClick={() => setToggleSearch(true)} />
-                        <div className={`md:hidden flex items-center justify-center fixed left-1/2 translate-x-[-50%] transition-all w-full px-4 bg-dark-clr h-[70px] ${toggleSearch ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4 pointer-events-none"}`}>
+                        
+                        {/* Desktop Input */}
+                        <input 
+                            type="text" 
+                            placeholder="Search" 
+                            value={searchQuery || ""}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="bg-primary md:block hidden outline-none border border-main-border focus:border-main-blue/20 py-2 pr-6 pl-[48px] w-[400px] rounded-full" 
+                            onClick={() => setToggleSearch(true)} 
+                        />
+                        
+                        {/* Mobile Search Bar overlay */}
+                        <div className={`md:hidden flex items-center justify-center fixed left-1/2 translate-x-[-50%] transition-all w-full px-4 bg-dark-clr h-[70px] z-50 ${toggleSearch ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4 pointer-events-none"}`}>
                             <IoIosSearch className="text-[22px] text-foreground absolute left-8" />
-                            <input autoFocus={true} type="text" placeholder="Search" className="bg-primary border border-main-border py-2 pr-6 w-full pl-[48px] rounded-full " />
+                            <input 
+                                autoFocus={toggleSearch} 
+                                type="text" 
+                                placeholder="Search" 
+                                value={searchQuery || ""}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="bg-primary border border-main-border py-2 pr-6 w-full pl-[48px] rounded-full outline-none focus:border-main-blue/50" 
+                            />
                         </div>
+
+                        {/* SEARCH RESULTS DROPDOWN */}
+                        {toggleSearch && searchQuery.trim().length > 0 && (
+                            <div className="absolute top-full md:mt-1 left-0 md:w-full w-[400px] md:left-auto  md:translate-x-0 -translate-x-1/2 bg-dark-clr border border-main-border rounded-xl shadow-2xl overflow-hidden z-[60]">
+                                {isSearching ? (
+                                    <div className="px-4 py-4 text-center text-sm text-gray-500 animate-pulse">
+                                        Searching...
+                                    </div>
+                                ) : searchResults.length === 0 ? (
+                                    <div className="px-4 py-4 text-center text-sm text-gray-500">
+                                        No users found.
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col">
+                                        {searchResults.map((user: any) => (
+                                            <Link 
+                                                key={user.id} 
+                                                href={`/@${user.username}`} 
+                                                onClick={() => {
+                                                    setToggleSearch(false);
+                                                    setSearchQuery(""); // Clear search on click
+                                                }}
+                                                className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/5 border-b border-main-border last:border-0"
+                                            >
+                                                <div className="w-10 h-10 rounded-full overflow-hidden bg-main-blue flex items-center justify-center shrink-0">
+                                                    {user.profile_image ? (
+                                                        <Image src={user.profile_image} alt={user.username} width={40} height={40} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <span className="text-white font-bold uppercase">{user.first_name?.charAt(0)}</span>
+                                                    )}
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-[15px] font-medium text-foreground leading-tight">
+                                                        {user.first_name} {user.last_name || ""}
+                                                    </span>
+                                                    <span className="text-[13px] text-gray-500 leading-tight">
+                                                        @{user.username}
+                                                    </span>
+                                                </div>
+                                            </Link>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </>
                 <div className="flex items-center gap-2">

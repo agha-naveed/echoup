@@ -4,53 +4,46 @@ import { createClient } from "@/utils/supabase/server";
 
 export default async function Page() {
   const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-  // Fetch the latest 20 posts with all relational data
-  const { data: initialPosts, error } = await supabase
-    .from("posts")
-    .select(`
-      id,
-      content,
-      created_at,
-      image_url,
-      author:users ( 
-        username, 
-        first_name, 
-        last_name, 
-        profile_image 
-      ),
-      likes ( 
-        id, 
-        user_id, 
-        photo_index 
-      ),
-      shares ( 
-        id, 
-        user_id, 
-        photo_index 
-      ),
-      comments (
-        id,
-        content,
-        created_at,
-        photo_index,
-        author:users ( 
-          username, 
-          first_name, 
-          last_name, 
-          profile_image 
-        )
-      )
-    `)
-    // 1. Order the main posts by newest first
-    .order("created_at", { ascending: false })
-    // 2. Order the nested comments by newest first
-    .order("created_at", { foreignTable: "comments", ascending: false })
-    .limit(20);
+    let initialPosts = [] as any;
 
-  if (error) {
-    console.error("Failed to fetch posts:", error);
-  }
+    if (user) {
+        // Step 1: Get the IDs of everyone the current user is following
+        const { data: following } = await supabase
+            .from("follows")
+            .select("following_id")
+            .eq("follower_id", user.id);
+
+        // Extract the IDs into an array
+        const followedIds = following?.map(f => f.following_id) || [];
+        
+        // Add the current user's own ID so they can see their own posts on the feed!
+        const allowedIds = [...followedIds, user.id];
+
+        // Step 2: Fetch posts ONLY from those allowed IDs
+        const { data: posts } = await supabase
+            .from("posts")
+            .select(`
+                id,
+                content,
+                image_url,
+                created_at,
+                author:users ( id, username, first_name, last_name, profile_image ),
+                likes ( id, user_id, photo_index ),
+                comments (
+                    id, content, created_at, photo_index,
+                    author:users ( id, username, first_name, last_name, profile_image )
+                ),
+                shares ( id, user_id, photo_index )
+            `)
+            .in("author_id", allowedIds) // <--- THIS IS THE MAGIC LINE
+            .order("created_at", { ascending: false })
+            .limit(20);
+
+        initialPosts = posts || [];
+    }
+
 
   return (
     <div className="w-full xl:px-10 md:px-7 flex flex-col gap-5 min-h-screen">
