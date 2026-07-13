@@ -37,8 +37,7 @@ export default async function Page({
     }
 
     return (
-        <div className='max-w-150'>
-            {/* Pass the fully resolved data and query params down to your Client Component */}
+        <div className='max-w-150 w-full min-h-screen h-full'>
             <PostOpen initialPost={postData} query={resolvedSearchParams} />
         </div>
     )
