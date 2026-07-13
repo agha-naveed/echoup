@@ -1,7 +1,7 @@
 "use client"
 import Image from "next/image";
 import { GoHeart, GoComment, GoShare } from "react-icons/go";
-import CustomVideoPlayer from "./CustomVideoPlayer"; // Make sure this path is correct!
+import Video from "./CustomVideoPlayer"; // Make sure this path is correct!
 
 // Temporary dummy data to test the UI
 const dummyReels = [
@@ -25,13 +25,13 @@ const dummyReels = [
 
 export default function ReelsFeed() {
     return (
-        <div className="w-full h-full overflow-y-auto snap-y snap-mandatory bg-black relative custom-scroll-hidden">
+        <div className="w-full h-full overflow-y-auto snap-y snap-mandatory relative custom-scroll-hidden">
             {dummyReels.map((reel) => (
-                <div key={reel.id} className="relative w-full h-dvh snap-start flex justify-center items-center bg-black">
+                <div key={reel.id} className="relative w-full h-full snap-start flex justify-center items-center">
                     
                     {/* The Custom Video Player we just built */}
-                    <div className="absolute inset-0">
-                        <CustomVideoPlayer 
+                    <div className="absolute inset-0 justify-self-center w-fit">
+                        <Video 
                             src={reel.url} 
                             isReel={true} // Forces it to fill the screen
                         />

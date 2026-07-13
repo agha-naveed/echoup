@@ -212,7 +212,7 @@ export default function Post({ post }: Props) {
                         <Video 
                             src={post.video_url} 
                             poster={post.video_url.replace('.mp4', '.jpg').replace('.webm', '.jpg')} 
-                            isReel={false} // Keeps it contained inside the post box
+                            isReel={false}
                             isPost={true}
                         />
                     </Link>

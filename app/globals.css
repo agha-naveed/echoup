@@ -94,6 +94,15 @@ input::placeholder {
   cursor: pointer;
 }
 
+.custom-scroll-hidden::-webkit-scrollbar {
+  display: none;
+}
+.custom-scroll-hidden {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+
 .post-open,
 .custom-scroll {}
 
