@@ -4,6 +4,7 @@ import { GoHeart, GoComment, GoShare } from "react-icons/go";
 import Video from "./CustomVideoPlayer"; // Make sure this path is correct!
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { AiOutlineLoading3Quarters } from "react-icons/ai";
 
 
 export default function ReelsFeed() {
@@ -14,6 +15,13 @@ export default function ReelsFeed() {
     const [isLoading, setIsLoading] = useState(true);
     
     const supabase = createClient()
+
+    
+    // Check if the current user's ID exists in the likes array we fetched
+    // const hasLikedInitially = reels.likes?.some((like: any) => like.user_id === currentUser?.id);
+    
+    const [isLiked, setIsLiked] = useState(false);
+    // const [likeCount, setLikeCount] = useState(reels.likes?.[0]?.count || 0);
 
     useEffect(() => {
         const fetchReelsData = async () => {
@@ -48,6 +56,56 @@ export default function ReelsFeed() {
 
         fetchReelsData();
     }, [supabase]);
+
+
+    if (isLoading) {
+        return (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-black text-white">
+                <AiOutlineLoading3Quarters className="animate-spin text-4xl text-main-blue mb-4" />
+                <p className="text-gray-400 font-medium">Loading Reels...</p>
+            </div>
+        );
+    }
+
+    if (reels.length === 0) {
+        return (
+            <div className="w-full h-full flex items-center justify-center bg-black text-white">
+                <p className="text-gray-400 font-medium text-lg">No reels found. Be the first to upload one!</p>
+            </div>
+        );
+    }
+
+
+    const handleLikeToggle = async () => {
+        if (!currentUser) return; // Must be logged in to like
+
+        // 1. Optimistic UI Update (Instant visual feedback)
+        const newIsLiked = !isLiked;
+        setIsLiked(newIsLiked);
+        setLikeCount((prev: number) => newIsLiked ? prev + 1 : prev - 1);
+
+        // 2. Database Action in the background
+        if (newIsLiked) {
+            // Insert like
+            const { error } = await supabase
+                .from("likes")
+                .insert({ 
+                    post_id: reel.id, 
+                    user_id: currentUser.id 
+                });
+            
+            if (error) console.error("Error liking:", error);
+        } else {
+            // Remove like
+            const { error } = await supabase
+                .from("likes")
+                .delete()
+                .match({ post_id: reel.id, user_id: currentUser.id });
+                
+            if (error) console.error("Error unliking:", error);
+        }
+    };
+    
     
     return (
         <div className="w-full h-full overflow-y-auto snap-y snap-mandatory relative custom-scroll-hidden">
@@ -87,7 +145,9 @@ export default function ReelsFeed() {
                                     </div>
 
                                     <button className="flex flex-col items-center gap-1 group transition-transform hover:scale-110">
-                                        <div className="p-2 sm:p-2.5 bg-black/40 backdrop-blur-sm rounded-full border border-white/10">
+                                        <div
+                                        onClick={handleLikeToggle}
+                                        className="p-2 sm:p-2.5 bg-black/40 backdrop-blur-sm rounded-full border border-white/10">
                                             <GoHeart className="text-white text-[22px] sm:text-[26px]" />
                                         </div>
                                         <span className="text-white text-[10px] sm:text-[11px] font-semibold drop-shadow-md">{reel?.likes.length}</span>

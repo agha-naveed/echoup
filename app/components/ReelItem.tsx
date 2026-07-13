@@ -38,7 +38,6 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                 .insert({ 
                     post_id: reel.id, 
                     user_id: currentUser.id 
-                    // Note: If your schema uses photo_index, add it here (e.g., photo_index: 0)
                 });
             
             if (error) console.error("Error liking:", error);
@@ -65,7 +64,7 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                 />
 
                 <div className="absolute bottom-0 left-0 w-full pointer-events-none flex flex-col justify-end pb-4 px-3 sm:px-4 z-20">
-                    <div className="absolute bottom-0 left-0 w-full h-[80%] bg-gradient-to-t from-black/80 via-black/30 to-transparent -z-10 pointer-events-none" />
+                    <div className="absolute bottom-0 left-0 w-full h-[80%] bg-linear-to-t from-black/80 via-black/30 to-transparent -z-10 pointer-events-none" />
 
                     <div className="flex justify-between items-end w-full">
                         {/* Caption & User Info */}
