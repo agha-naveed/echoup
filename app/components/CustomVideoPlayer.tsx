@@ -6,40 +6,58 @@ import { IoVolumeHigh, IoVolumeMute } from "react-icons/io5";
 interface VideoPlayerProps {
     src: string;
     poster?: string;
-    isReel?: boolean; // If true, it fills the screen. If false, it fits a standard post.
+    isReel?: boolean; 
     isPost?: boolean;
+    // NEW: Allow the parent to control the mute state
+    globalMuted?: boolean; 
+    onToggleMuted?: () => void; 
 }
 
-export default function Video({ src, poster, isReel = false, isPost = false }: VideoPlayerProps) {
+export default function Video({ src, poster, isReel = false, isPost = false, globalMuted, onToggleMuted }: VideoPlayerProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
     const [isPlaying, setIsPlaying] = useState(false);
-    const [isMuted, setIsMuted] = useState(true); // Autoplay requires video to be muted initially
     const [progress, setProgress] = useState(0);
+    
+    // BACKUP LOCAL STATE: Only used if globalMuted isn't provided
+    const [localMuted, setLocalMuted] = useState(true); 
 
-    // 1. Play/Pause Logic
+    // Determine which mute state we are actually using
+    const isCurrentlyMuted = globalMuted !== undefined ? globalMuted : localMuted;
+
+    // 1. Play/Pause Logic (Remains unchanged)
     const togglePlay = () => {
         if (videoRef.current) {
             if (isPlaying) {
                 videoRef.current.pause();
             } else {
-                videoRef.current.play();
+                videoRef.current.play().catch(e => console.log(e));
             }
             setIsPlaying(!isPlaying);
         }
     };
 
-    // 2. Mute/Unmute Logic
+    // 2. NEW: Mute/Unmute Logic
     const toggleMute = (e: React.MouseEvent) => {
-        e.stopPropagation(); // Prevents the video from pausing when clicking mute
-        if (videoRef.current) {
-            videoRef.current.muted = !isMuted;
-            setIsMuted(!isMuted);
+        e.stopPropagation(); 
+        if (onToggleMuted) {
+            // Tell the parent feed to toggle the global mute
+            onToggleMuted();
+        } else {
+            // Fallback for standard posts
+            setLocalMuted(!localMuted);
         }
     };
 
-    // 3. Update Progress Bar
+    // 3. NEW: Force the video HTML element to sync with our React state
+    useEffect(() => {
+        if (videoRef.current) {
+            videoRef.current.muted = isCurrentlyMuted;
+        }
+    }, [isCurrentlyMuted]);
+
+    // Update Progress Bar
     const handleTimeUpdate = () => {
         if (videoRef.current) {
             const current = videoRef.current.currentTime;
@@ -48,18 +66,26 @@ export default function Video({ src, poster, isReel = false, isPost = false }: V
         }
     };
 
-    // 4. Auto-Pause when scrolled out of view (Intersection Observer)
+    // Auto-Play / Auto-Pause based on scroll visibility
     useEffect(() => {
         const observer = new IntersectionObserver(
             (entries) => {
                 entries.forEach((entry) => {
-                    if (!entry.isIntersecting && videoRef.current && !videoRef.current.paused) {
-                        videoRef.current.pause();
-                        setIsPlaying(false);
+                    if (entry.isIntersecting) {
+                        if (videoRef.current && videoRef.current.paused) {
+                            videoRef.current.play().then(() => {
+                                setIsPlaying(true);
+                            }).catch((err) => console.log("Autoplay blocked by browser:", err));
+                        }
+                    } else {
+                        if (videoRef.current && !videoRef.current.paused) {
+                            videoRef.current.pause();
+                            setIsPlaying(false);
+                        }
                     }
                 });
             },
-            { threshold: 0.4 } // Triggers when less than 40% of the video is visible
+            { threshold: 0.6 } 
         );
 
         if (containerRef.current) {
@@ -72,29 +98,22 @@ export default function Video({ src, poster, isReel = false, isPost = false }: V
     return (
         <div
             ref={containerRef}
-            // 1. CHANGED: isReel now uses w-fit and h-fit to shrink-wrap the video
-            className={`relative h-full flex justify-center overflow-hidden cursor-pointer group ${isReel ? "w-fit bg-transparent items-center" : "h-[85%] bg-black rounded-xl border border-main-border"
-                }
-            ${isPost && "max-h-125 items-center"}`}
+            className={`relative h-full flex justify-center overflow-hidden cursor-pointer group ${isReel ? "w-fit bg-transparent items-center" : "h-[85%] bg-black rounded-xl border border-main-border"} ${isPost && "max-h-125 items-center"}`}
             onClick={togglePlay}
         >
-            {/* THE ACTUAL VIDEO (Controls Hidden) */}
             <video
                 ref={videoRef}
                 src={src}
                 poster={poster}
                 loop
                 playsInline
-                muted={isMuted}
+                muted={isCurrentlyMuted} // Controlled by our synced state
                 onTimeUpdate={handleTimeUpdate}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
-                // 2. CHANGED: w-auto h-auto forces the video to define the container's size. 
-                // We use max-h-[calc(100vh-120px)] so tall videos don't bleed under your navbar.
                 className={`max-w-full ${isReel ? "w-auto h-auto max-h-[calc(100vh-120px)] sm:max-w-[450px]" : "w-full h-fit object-contain"}`}
             />
 
-            {/* BIG PLAY BUTTON OVERLAY */}
             {!isPlaying && (
                 <div className={`absolute inset-0 flex items-center justify-center ${isReel ? "bg-black/10" : "bg-black/20"} transition-opacity`}>
                     <div className="w-16 h-16 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white/90 shadow-xl border border-white/20 pl-1">
@@ -103,15 +122,14 @@ export default function Video({ src, poster, isReel = false, isPost = false }: V
                 </div>
             )}
 
-            {/* MUTE / UNMUTE BUTTON */}
             <button
                 onClick={toggleMute}
                 className="absolute top-4 right-4 p-2 bg-black/50 backdrop-blur-md rounded-full text-white/90 hover:bg-black/70 transition-colors z-10"
             >
-                {isMuted ? <IoVolumeMute size={20} /> : <IoVolumeHigh size={20} />}
+                {/* Check the synced state for the icon */}
+                {isCurrentlyMuted ? <IoVolumeMute size={20} /> : <IoVolumeHigh size={20} />}
             </button>
 
-            {/* BOTTOM PROGRESS BAR */}
             <div className={`absolute bottom-0 left-0 w-full h-1 bg-white/20 z-10`}>
                 <div
                     className="h-full bg-main-blue transition-all duration-75 ease-linear"
