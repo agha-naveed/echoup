@@ -7,7 +7,7 @@ export const metadata = {
 
 export default function ReelsPage() {
     return (
-        <main className="w-full h-[calc(100dvh_-_152px)] overflow-hidden">
+        <main className="w-full h-[calc(100dvh_-_90px)] overflow-hidden">
             <ReelsFeed />
         </main>
     );

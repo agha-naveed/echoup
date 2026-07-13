@@ -72,11 +72,10 @@ export default function Video({ src, poster, isReel = false, isPost = false }: V
     return (
         <div 
             ref={containerRef}
-            className={`relative w-full flex justify-center overflow-hidden cursor-pointer group ${
-                isReel ? "h-full bg-light-clr w-fit" : "h-[85%] bg-black rounded-xl border border-main-border"
+            className={`relative flex justify-center overflow-hidden cursor-pointer group ${
+                isReel ? "w-fit h-full bg-transparent items-center" : "h-[85%] w-full bg-black rounded-xl border border-main-border"
             }
-            ${isPost && "max-h-125 items-center"}
-            `}
+            ${isPost && "max-h-125 items-center"}`}
             onClick={togglePlay}
         >
             {/* THE ACTUAL VIDEO (Controls Hidden) */}
@@ -90,7 +89,7 @@ export default function Video({ src, poster, isReel = false, isPost = false }: V
                 onTimeUpdate={handleTimeUpdate}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
-                className={`w-full h-full ${isReel ? "object-cover sm:max-w-112.5" : "object-contain"}`}
+                className={`w-full h-fit ${isReel ? "object-cover sm:max-w-112.5" : "object-contain"}`}
             />
 
             {/* BIG PLAY BUTTON OVERLAY (Shows only when paused) */}
