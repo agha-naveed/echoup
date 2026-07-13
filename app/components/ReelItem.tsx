@@ -31,6 +31,9 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
     const [isPosting, setIsPosting] = useState(false);
     const [commentCount, setCommentCount] = useState(reel.comments_count?.[0]?.count || 0);
     
+    // --- SHARE STATE ---
+    const [copied, setCopied] = useState(false);
+    
     // --- RATE LIMITING STATE ---
     const [lastCommentTime, setLastCommentTime] = useState(0);
     const [rateLimitError, setRateLimitError] = useState("");
@@ -124,6 +127,34 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
         setIsPosting(false);
     };
 
+    // --- SHARE LOGIC ---
+    const handleShare = async () => {
+        // Construct the URL to this specific post (adjust the route if your single post route is different)
+        const postUrl = `${window.location.origin}/post/${reel.id}`;
+
+        if (navigator.share) {
+            // Mobile: Opens the native OS Share Sheet
+            try {
+                await navigator.share({
+                    title: `Reel by @${reel.author?.username || reel.author?.first_name}`,
+                    text: reel.content,
+                    url: postUrl,
+                });
+            } catch (error) {
+                console.log("Error sharing:", error);
+            }
+        } else {
+            // Desktop Fallback: Copy to Clipboard
+            try {
+                await navigator.clipboard.writeText(postUrl);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2500); // Hide the "Copied!" message after 2.5s
+            } catch (err) {
+                console.error("Failed to copy link:", err);
+            }
+        }
+    };
+
     return (
         <div className="relative w-full h-full snap-start flex justify-center items-center sm:py-1 overflow-hidden">
             <div className="flex flex-row items-center justify-center w-full sm:w-auto h-full sm:h-auto max-h-full">
@@ -170,11 +201,23 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                                     <span className="text-white text-[10px] sm:text-[11px] font-semibold drop-shadow-md">{commentCount}</span>
                                 </button>
 
-                                <button className="flex flex-col items-center gap-1 group transition-transform hover:scale-110">
-                                    <div className="p-2 sm:p-2.5 bg-black/40 backdrop-blur-sm rounded-full border border-white/10">
-                                        <GoShare className="text-white text-[20px] sm:text-[24px]" />
-                                    </div>
-                                </button>
+                                <div className="relative flex flex-col items-center">
+                                    <button 
+                                        onClick={handleShare}
+                                        className="flex flex-col items-center gap-1 group transition-transform hover:scale-110 active:scale-95"
+                                    >
+                                        <div className="p-2 sm:p-2.5 bg-black/40 backdrop-blur-sm rounded-full border border-white/10">
+                                            <GoShare className="text-white text-[20px] sm:text-[24px]" />
+                                        </div>
+                                    </button>
+
+                                    {/* Desktop Fallback Tooltip */}
+                                    {copied && (
+                                        <div className="absolute -top-8 bg-black/80 text-white text-[10px] font-bold px-2 py-1 rounded-md whitespace-nowrap animate-pulse">
+                                            Link Copied!
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
