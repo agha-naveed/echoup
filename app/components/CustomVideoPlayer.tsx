@@ -13,7 +13,7 @@ interface VideoPlayerProps {
 export default function Video({ src, poster, isReel = false, isPost = false }: VideoPlayerProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    
+
     const [isPlaying, setIsPlaying] = useState(false);
     const [isMuted, setIsMuted] = useState(true); // Autoplay requires video to be muted initially
     const [progress, setProgress] = useState(0);
@@ -70,11 +70,11 @@ export default function Video({ src, poster, isReel = false, isPost = false }: V
     }, []);
 
     return (
-        <div 
+        <div
             ref={containerRef}
-            className={`relative flex justify-center overflow-hidden cursor-pointer group ${
-                isReel ? "w-fit h-full bg-transparent items-center" : "h-[85%] w-full bg-black rounded-xl border border-main-border"
-            }
+            // 1. CHANGED: isReel now uses w-fit and h-fit to shrink-wrap the video
+            className={`relative h-full flex justify-center overflow-hidden cursor-pointer group ${isReel ? "w-fit bg-transparent items-center" : "h-[85%] bg-black rounded-xl border border-main-border"
+                }
             ${isPost && "max-h-125 items-center"}`}
             onClick={togglePlay}
         >
@@ -85,24 +85,26 @@ export default function Video({ src, poster, isReel = false, isPost = false }: V
                 poster={poster}
                 loop
                 playsInline
-                muted={isMuted} // Controlled by our React state
+                muted={isMuted}
                 onTimeUpdate={handleTimeUpdate}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
-                className={`w-full h-fit ${isReel ? "object-cover sm:max-w-112.5" : "object-contain"}`}
+                // 2. CHANGED: w-auto h-auto forces the video to define the container's size. 
+                // We use max-h-[calc(100vh-120px)] so tall videos don't bleed under your navbar.
+                className={`max-w-full ${isReel ? "w-auto h-auto max-h-[calc(100vh-120px)] sm:max-w-[450px]" : "w-full h-fit object-contain"}`}
             />
 
-            {/* BIG PLAY BUTTON OVERLAY (Shows only when paused) */}
+            {/* BIG PLAY BUTTON OVERLAY */}
             {!isPlaying && (
-                <div className={`absolute inset-0 flex items-center justify-center ${isReel ? "bg-transparent" : "bg-black/20"} transition-opacity`}>
+                <div className={`absolute inset-0 flex items-center justify-center ${isReel ? "bg-black/10" : "bg-black/20"} transition-opacity`}>
                     <div className="w-16 h-16 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white/90 shadow-xl border border-white/20 pl-1">
                         <FaPlay className="text-2xl" />
                     </div>
                 </div>
             )}
 
-            {/* MUTE / UNMUTE BUTTON (Top Right) */}
-            <button 
+            {/* MUTE / UNMUTE BUTTON */}
+            <button
                 onClick={toggleMute}
                 className="absolute top-4 right-4 p-2 bg-black/50 backdrop-blur-md rounded-full text-white/90 hover:bg-black/70 transition-colors z-10"
             >
@@ -110,8 +112,8 @@ export default function Video({ src, poster, isReel = false, isPost = false }: V
             </button>
 
             {/* BOTTOM PROGRESS BAR */}
-            <div className={`absolute bottom-0 left-0 w-full h-1 bg-white/20 z-10 ${isReel ? "sm:max-w-[450px] mx-auto right-0" : ""}`}>
-                <div 
+            <div className={`absolute bottom-0 left-0 w-full h-1 bg-white/20 z-10`}>
+                <div
                     className="h-full bg-main-blue transition-all duration-75 ease-linear"
                     style={{ width: `${progress}%` }}
                 />

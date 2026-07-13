@@ -27,41 +27,33 @@ export default function ReelsFeed() {
     return (
         <div className="w-full h-full overflow-y-auto snap-y snap-mandatory relative custom-scroll-hidden">
             {dummyReels.map((reel) => (
-                <div key={reel.id} className="relative w-full h-full snap-start flex justify-center items-center">
+                // Parent wrapper for scrolling snap (always full screen)
+                <div key={reel.id} className="relative w-full h-full snap-start flex justify-center items-center sm:py-1">
                     
-                    {/* UNIFIED WRAPPER: Acts as the "phone screen". 
-                        Fills mobile screens completely, but locks to a perfect portrait ratio on desktop. */}
-                    <div className="relative w-full h-full sm:w-[450px] sm:max-h-[100dvh] flex flex-col justify-center overflow-hidden bg-black border-x border-white/5">
+                    <div className="relative w-fit h-full flex flex-col justify-center overflow-hidden sm:rounded-xl bg-black shadow-[0_0_20px_rgba(0,0,0,0.5)]">
                         
                         {/* The Custom Video Player */}
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <Video 
-                                src={reel.url} 
-                                isReel={true} 
-                            />
-                        </div>
+                        <Video src={reel.url} isReel={true} />
 
-                        {/* The Interactive Overlay */}
-                        <div className="absolute bottom-0 left-0 w-full pointer-events-none flex flex-col justify-end pb-20 sm:pb-6 px-4 z-20">
+                        {/* 2. CHANGED: The Overlay. Because the parent is w-fit/h-fit, this sits exactly at the bottom of the video! */}
+                        <div className="absolute bottom-0 left-0 w-full pointer-events-none flex flex-col justify-end pb-4 px-3 sm:px-4 z-20">
                             
-                            {/* Protection Gradient: Ensures white text is readable even if the video is bright white */}
-                            <div className="absolute bottom-0 left-0 w-full h-[60%] bg-gradient-to-t from-black/80 via-black/40 to-transparent -z-10 pointer-events-none" />
+                            <div className="absolute bottom-0 left-0 w-full h-[80%] bg-linear-to-t from-black/80 via-black/30 to-transparent -z-10 pointer-events-none" />
 
                             <div className="flex justify-between items-end w-full">
-                                
                                 {/* Left Side: Caption & User Info */}
                                 <div className="flex flex-col text-white w-[75%] pointer-events-auto">
-                                    <h3 className="font-bold text-[16px] mb-1 drop-shadow-lg">
+                                    <h3 className="font-bold text-[15px] sm:text-[16px] mb-1 drop-shadow-lg">
                                         @{reel.author.replace(/\s+/g, '').toLowerCase()}
                                     </h3>
-                                    <p className="text-[14px] font-medium drop-shadow-md leading-tight">
+                                    <p className="text-[13px] sm:text-[14px] font-medium drop-shadow-md leading-tight line-clamp-2">
                                         {reel.caption}
                                     </p>
                                 </div>
 
                                 {/* Right Side: Action Buttons */}
-                                <div className="flex flex-col gap-4 items-center pointer-events-auto pb-2">
-                                    <div className="w-10 h-10 bg-dark-clr rounded-full border border-white overflow-hidden shadow-lg mb-2 cursor-pointer transition-transform hover:scale-105">
+                                <div className="flex flex-col gap-3 sm:gap-4 items-center pointer-events-auto pb-1 sm:pb-2">
+                                    <div className="w-9 h-9 sm:w-10 sm:h-10 bg-dark-clr rounded-full border border-white overflow-hidden shadow-lg mb-1 sm:mb-2 cursor-pointer transition-transform hover:scale-105">
                                         <Image 
                                             src="https://ntvb.tmsimg.com/assets/assets/487578_v9_bb.jpg?w=360&h=480" 
                                             alt="Creator" 
@@ -72,22 +64,22 @@ export default function ReelsFeed() {
                                     </div>
 
                                     <button className="flex flex-col items-center gap-1 group transition-transform hover:scale-110">
-                                        <div className="p-2.5 bg-black/40 backdrop-blur-sm rounded-full border border-white/10">
-                                            <GoHeart className="text-white text-[26px]" />
+                                        <div className="p-2 sm:p-2.5 bg-black/40 backdrop-blur-sm rounded-full border border-white/10">
+                                            <GoHeart className="text-white text-[22px] sm:text-[26px]" />
                                         </div>
-                                        <span className="text-white text-[11px] font-semibold drop-shadow-md">{reel.likes}</span>
+                                        <span className="text-white text-[10px] sm:text-[11px] font-semibold drop-shadow-md">{reel.likes}</span>
                                     </button>
 
                                     <button className="flex flex-col items-center gap-1 group transition-transform hover:scale-110">
-                                        <div className="p-2.5 bg-black/40 backdrop-blur-sm rounded-full border border-white/10">
-                                            <GoComment className="text-white text-[24px]" />
+                                        <div className="p-2 sm:p-2.5 bg-black/40 backdrop-blur-sm rounded-full border border-white/10">
+                                            <GoComment className="text-white text-[20px] sm:text-[24px]" />
                                         </div>
-                                        <span className="text-white text-[11px] font-semibold drop-shadow-md">{reel.comments}</span>
+                                        <span className="text-white text-[10px] sm:text-[11px] font-semibold drop-shadow-md">{reel.comments}</span>
                                     </button>
 
                                     <button className="flex flex-col items-center gap-1 group transition-transform hover:scale-110">
-                                        <div className="p-2.5 bg-black/40 backdrop-blur-sm rounded-full border border-white/10">
-                                            <GoShare className="text-white text-[24px]" />
+                                        <div className="p-2 sm:p-2.5 bg-black/40 backdrop-blur-sm rounded-full border border-white/10">
+                                            <GoShare className="text-white text-[20px] sm:text-[24px]" />
                                         </div>
                                     </button>
                                 </div>
