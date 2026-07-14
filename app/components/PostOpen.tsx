@@ -10,9 +10,24 @@ import { CiCamera } from 'react-icons/ci';
 import { PiGif } from 'react-icons/pi';
 import { IoIosArrowDown } from 'react-icons/io';
 import { formatDistanceToNowStrict } from 'date-fns';
-import { AiOutlineLoading3Quarters } from "react-icons/ai"; // For the sending spinner
+import { AiOutlineLoading3Quarters } from "react-icons/ai";
 import Video from './CustomVideoPlayer';
 import { createClient } from "@/utils/supabase/client";
+import { useUser } from '@/context/UserContext';
+
+// --- SKELETON COMPONENT ---
+const CommentSkeleton = () => (
+    <div className='flex items-start gap-1.5 mt-2 animate-pulse w-full'>
+        <div className='min-w-10 h-10 rounded-full shrink-0 bg-dark-clr/60 border border-main-border'></div>
+        <div className='grid gap-2 bg-dark-clr/40 rounded-[10px] py-2.5 px-3 w-[60%]'>
+            <div className='h-3 bg-dark-clr rounded-md w-1/2'></div>
+            <div className='h-3 bg-dark-clr rounded-md w-3/4'></div>
+        </div>
+    </div>
+);
+
+const INITIAL_COMMENTS_LOAD = 5;
+const COMMENTS_PER_CLICK = 7;
 
 export default function PostOpen({ initialPost: post, query }: { initialPost: any, query: any }) {
     const supabase = createClient();
@@ -25,60 +40,88 @@ export default function PostOpen({ initialPost: post, query }: { initialPost: an
     const dropdownRef = useRef<HTMLDivElement>(null);
     const commentInputRef = useRef<HTMLDivElement>(null);
 
+    const user = useUser();
+
     // --- DB STATES ---
-    const [currentUser, setCurrentUser] = useState<any>(null);
-    
-    // Likes
     const [isLiked, setIsLiked] = useState(false);
     const [likeCount, setLikeCount] = useState(0);
 
-    // Comments
+    // --- PAGINATION & COMMENTS STATE ---
     const [comments, setComments] = useState<any[]>([]);
     const [commentCount, setCommentCount] = useState(0);
     const [isPosting, setIsPosting] = useState(false);
+    const [isInitialLoading, setIsInitialLoading] = useState(true);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [hasMoreComments, setHasMoreComments] = useState(true);
     
-    // Rate Limiting
     const [lastCommentTime, setLastCommentTime] = useState(0);
     const [rateLimitError, setRateLimitError] = useState("");
 
-    // --- INITIALIZATION ---
+    
+    // --- INITIALIZATION (Likes) ---
     useEffect(() => {
-        const initData = async () => {
-            // 1. Get User
-            const { data: { user } } = await supabase.auth.getUser();
-            
-            if (user) {
-                // 1. Fetch Profile
-                const { data: profile } = await supabase
-                    .from("users")
-                    .select("id, first_name, last_name, username, profile_image")
-                    .eq("id", user.id)
-                    .single();
-                    setCurrentUser(profile);
-            }
-
-            // 2. Set Initial Likes
-            if (user && post?.likes) {
-                setIsLiked(post.likes.some((l: any) => l.user_id === user.id));
+        const initLikes = async () => {
+            if (user?.user?.id && post?.likes.length > 0) {
+                setIsLiked(post.likes.some((l: any) => l.user_id === user?.user?.id));
             }
             setLikeCount(post?.likes?.length || 0);
-            setCommentCount(post?.comments_count?.[0]?.count || 0);
-
-            // 3. Fetch Comments
-            if (post?.id) {
-                const { data: commentsData } = await supabase
-                    .from("comments")
-                    .select(`id, content, created_at, author:users (id, username, first_name, last_name, profile_image)`)
-                    .eq("post_id", post.id)
-                    .order("created_at", { ascending: false });
-
-                if (commentsData) setComments(commentsData);
-            }
+            setCommentCount(post?.comments.length || 0);
         };
-        initData();
-    }, [post, supabase]);
+        if(user?.user) {
+            initLikes();
+        }
+    }, [post, supabase, user]);
 
-    // Close dropdown on outside click
+    // --- FETCH COMMENTS (Initial & on Sort Change) ---
+    useEffect(() => {
+        const initComments = async () => {
+            if (!post?.id) return;
+            setIsInitialLoading(true);
+            const ascending = sortComment === "old";
+
+            const { data, error } = await supabase
+                .from("comments")
+                .select(`id, content, created_at, author:users (id, username, first_name, last_name, profile_image)`)
+                .eq("post_id", post.id)
+                .order("created_at", { ascending })
+                .range(0, INITIAL_COMMENTS_LOAD - 1); // 0 to 14 gets 15 items
+
+            if (data && !error) {
+                setComments(data);
+                setHasMoreComments(data.length === INITIAL_COMMENTS_LOAD);
+            }
+            setIsInitialLoading(false);
+        };
+        initComments();
+    }, [post?.id, sortComment, supabase]);
+
+    // --- LOAD MORE MANUAL CLICK ---
+    const loadMoreComments = async () => {
+        if (!post?.id || !hasMoreComments || isLoadingMore) return;
+        setIsLoadingMore(true);
+
+        const ascending = sortComment === "old";
+        // Start fetching exactly where our current array ends
+        const currentOffset = comments.length; 
+
+        const { data, error } = await supabase
+            .from("comments")
+            .select(`id, content, created_at, author:users (id, username, first_name, last_name, profile_image)`)
+            .eq("post_id", post.id)
+            .order("created_at", { ascending })
+            .range(currentOffset, currentOffset + COMMENTS_PER_CLICK - 1); // e.g., 15 to 21 gets 7 items
+
+        if (data && !error) {
+            setComments(prev => [...prev, ...data]);
+            // If it brings back less than 7, there are no more left in the database
+            if (data.length < COMMENTS_PER_CLICK) {
+                setHasMoreComments(false);
+            }
+        }
+        setIsLoadingMore(false);
+    };
+
+    // --- UI EVENT LISTENERS ---
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -89,34 +132,41 @@ export default function PostOpen({ initialPost: post, query }: { initialPost: an
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // Handle Editable Div Input
     const handleInput = (e: any) => {
         const text = e.currentTarget.textContent.trim();
         setIsEmpty(!text);
     };
 
-    // --- LIKE LOGIC ---
+    // --- LIKES & SHARE ---
     const handleLikeToggle = async () => {
-        if (!currentUser) return;
+        if (!user.user) return;
         const newIsLiked = !isLiked;
         
         setIsLiked(newIsLiked);
         setLikeCount(prev => newIsLiked ? prev + 1 : prev - 1);
 
         if (newIsLiked) {
-            await supabase.from("likes").insert({ post_id: post.id, user_id: currentUser.id });
+            await supabase.from("likes").insert({ post_id: post.id, user_id: user?.user?.id });
         } else {
-            await supabase.from("likes").delete().match({ post_id: post.id, user_id: currentUser.id });
+            await supabase.from("likes").delete().match({ post_id: post.id, user_id: user?.user?.id });
         }
     };
 
-    // --- COMMENT LOGIC ---
+    const handleShare = async () => {
+        const postUrl = `${window.location.origin}/post/${post.id}`;
+        if (navigator.share) {
+            try { await navigator.share({ url: postUrl }); } catch (err) { console.log(err); }
+        } else {
+            try { await navigator.clipboard.writeText(postUrl); alert("Link copied!"); } catch (err) { console.error(err); }
+        }
+    };
+
+    // --- POST COMMENT ---
     const handlePostComment = async () => {
-        if (!currentUser || isPosting) return;
+        if (!user || isPosting) return;
         const text = commentInputRef.current?.innerText.trim();
         if (!text) return;
 
-        // Rate Limiting Check
         const COOLDOWN_MS = 5000;
         const timeSinceLastComment = Date.now() - lastCommentTime;
         if (timeSinceLastComment < COOLDOWN_MS) {
@@ -132,18 +182,23 @@ export default function PostOpen({ initialPost: post, query }: { initialPost: an
             .from("comments")
             .insert({
                 post_id: post.id,
-                author_id: currentUser.id,
+                author_id: user?.user.id, 
                 content: text
             })
             .select(`id, content, created_at, author:users (id, username, first_name, last_name, profile_image)`)
             .single();
 
         if (data && !error) {
-            setComments(prev => [data, ...prev]);
+            // Optimistic update respecting current sort order
+            if (sortComment === "new") {
+                setComments(prev => [data, ...prev]);
+            } else {
+                setComments(prev => [...prev, data]);
+            }
+            
             setCommentCount(prev => prev + 1);
             setLastCommentTime(Date.now());
             
-            // Clear the input
             if (commentInputRef.current) {
                 commentInputRef.current.innerText = "";
                 setIsEmpty(true);
@@ -154,26 +209,9 @@ export default function PostOpen({ initialPost: post, query }: { initialPost: an
         setIsPosting(false);
     };
 
-    // --- SHARE LOGIC ---
-    const handleShare = async () => {
-        const postUrl = `${window.location.origin}/post/${post.id}`;
-        if (navigator.share) {
-            try { await navigator.share({ url: postUrl }); } catch (err) { console.log(err); }
-        } else {
-            try { await navigator.clipboard.writeText(postUrl); alert("Link copied!"); } catch (err) { console.error(err); }
-        }
-    };
-
-    // --- SORT COMMENTS LOGIC ---
-    const sortedComments = [...comments].sort((a, b) => {
-        const timeA = new Date(a.created_at).getTime();
-        const timeB = new Date(b.created_at).getTime();
-        return sortComment === "new" ? timeB - timeA : timeA - timeB;
-    });
-
     return (
         <div className='bg-primary rounded-2xl w-full h-fit border border-main-border shadow-lg overflow-auto'>
-            {/* --- HEADER --- */}
+            {/* Header */}
             <div className='flex items-center justify-between px-5 py-4'>
                 <div className='flex items-center gap-3'>
                     <div className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden">
@@ -193,7 +231,7 @@ export default function PostOpen({ initialPost: post, query }: { initialPost: an
                 <HiOutlineDotsHorizontal className='text-[22px] p-1.5 cursor-pointer w-8.75 h-8.75 transition-all hover:bg-dark-clr rounded-full text-foreground' />
             </div>
 
-            {/* --- POST CONTENT (Text, Image, Video) --- */}
+            {/* Content */}
             <div className='grid gap-3 overflow-hidden w-auto max-h-max'>
                 {post?.content && <h4 className='text-white text-[17px] px-5'>{post?.content}</h4>}
                 {query?.photo && post?.imageUrl?.[query.photo - 1] && (
@@ -206,25 +244,25 @@ export default function PostOpen({ initialPost: post, query }: { initialPost: an
                 </div>
             </div>
 
-            {/* --- ACTION BUTTONS (Like, Comment, Share) --- */}
+            {/* Action Buttons */}
             <div className='px-3 mt-4 flex items-center gap-0.5 text-foreground'>
-                <button onClick={handleLikeToggle} className='flex items-center gap-2 md:text-[19px] text-[16px] group cursor-pointer transition-all hover:bg-dark-clr/50 md:px-4 px-3.25 py-1.25 rounded-full' title='Like this post'>
+                <button onClick={handleLikeToggle} className='flex items-center gap-2 md:text-[19px] text-[16px] group cursor-pointer transition-all hover:bg-dark-clr/50 md:px-4 px-3.25 py-1.25 rounded-full'>
                     {isLiked ? <GoHeartFill className="text-red-500" /> : <GoHeart />}
                     <span className='md:text-[17px] text-[15px]'>{likeCount}</span>
                 </button>
 
-                <button className='md:text-[19px] text-[16px] cursor-pointer flex items-center gap-2 transition-all hover:bg-dark-clr/50 md:px-4 px-3.25 py-1.25 rounded-full' title='Comment this post'>
+                <button className='md:text-[19px] text-[16px] cursor-pointer flex items-center gap-2 transition-all hover:bg-dark-clr/50 md:px-4 px-3.25 py-1.25 rounded-full'>
                     <GoComment />
-                    <span className='md:text-[17px] text-[15px]'>{comments.length}</span>
+                    <span className='md:text-[17px] text-[15px]'>{commentCount}</span>
                 </button>
 
-                <button onClick={handleShare} className='flex items-center gap-2 md:text-[19px] text-[16px] cursor-pointer transition-all hover:bg-dark-clr/50 md:px-4 px-3.25 py-1.25 rounded-full' title='Share this post'>
+                <button onClick={handleShare} className='flex items-center gap-2 md:text-[19px] text-[16px] cursor-pointer transition-all hover:bg-dark-clr/50 md:px-4 px-3.25 py-1.25 rounded-full'>
                     <RiShareForward2Line />
                     <span className='md:text-[17px] text-[15px]'>{post?.shares || 0}</span>
                 </button>
             </div>
 
-            {/* --- COMMENTS SECTION --- */}
+            {/* Comments Section */}
             <div className='px-5 py-4 grid gap-3 relative'>
                 {/* Sort Dropdown */}
                 <div className='w-fit h-7.5' ref={dropdownRef}>
@@ -241,35 +279,57 @@ export default function PostOpen({ initialPost: post, query }: { initialPost: an
                     </ul>
                 </div>
 
-                {/* Render Existing Comments */}
-                {sortedComments.map(comment => (
-                    <div key={comment.id} className='flex items-start gap-1.5 mt-2'>
-                        <div className='min-w-10 h-10 rounded-full overflow-hidden shrink-0 bg-dark-clr border border-main-border'>
-                            {comment.author?.profile_image ? (
-                                <Image src={comment.author.profile_image} alt="DP" width={40} height={40} className="w-full h-full object-cover" />
-                            ) : (
-                                <div className="w-full h-full bg-main-blue flex justify-center items-center text-white font-bold">
-                                    {comment.author?.first_name?.charAt(0) || "U"}
+                {/* Render Comments or Initial Skeleton */}
+                {isInitialLoading ? (
+                    Array(3).fill(0).map((_, i) => <CommentSkeleton key={i} />)
+                ) : (
+                    <>
+                        {comments.map(comment => (
+                            <div key={comment.id} className='flex items-start gap-1.5 mt-2'>
+                                <div className='min-w-10 h-10 rounded-full overflow-hidden shrink-0 bg-dark-clr border border-main-border'>
+                                    {comment.author?.profile_image ? (
+                                        <Image src={comment.author.profile_image} alt="DP" width={40} height={40} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="w-full h-full bg-main-blue flex justify-center items-center text-white font-bold">
+                                            {comment.author?.first_name?.charAt(0) || "U"}
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
-                        <div className='grid gap-1 text-foreground text-[15px] bg-dark-clr/40 rounded-[10px] py-1.5 px-2.5 max-w-[85%]'>
-                            <Link href={""} className='font-medium w-fit text-white'>
-                                {comment.author?.first_name} {comment.author?.last_name}
-                            </Link>
-                            <span className='text-foreground/90'>{comment.content}</span>
-                        </div>
-                    </div>
-                ))}
+                                <div className='grid gap-1 text-foreground text-[15px] bg-dark-clr/40 rounded-[10px] py-1.5 px-2.5 max-w-[85%]'>
+                                    <Link href={""} className='font-medium w-fit text-white'>
+                                        {comment.author?.first_name} {comment.author?.last_name}
+                                    </Link>
+                                    <span className='text-foreground/90'>{comment.content}</span>
+                                </div>
+                            </div>
+                        ))}
+                        
+                        {/* MANUAL LOAD MORE BUTTON */}
+                        {hasMoreComments && (
+                            <div className="flex justify-start pl-12 mt-2">
+                                <button 
+                                    onClick={loadMoreComments}
+                                    disabled={isLoadingMore}
+                                    className="text-[14px] text-foreground/60 hover:text-foreground hover:underline transition-colors disabled:opacity-50 font-medium"
+                                >
+                                    {isLoadingMore ? "Loading..." : "View more comments"}
+                                </button>
+                            </div>
+                        )}
+                        
+                        {/* Load More Skeleton */}
+                        {isLoadingMore && <CommentSkeleton />}
+                    </>
+                )}
 
                 {/* Input New Comment */}
                 <div className='flex items-start gap-1.5 mt-2'>
                     <div className='min-w-10 h-10 rounded-full overflow-hidden shrink-0'>
-                        {currentUser?.profile_image ? (
-                            <Image src={currentUser?.profile_image} alt="DP" width={40} height={40} className="w-full h-full object-cover" />
+                        {user?.user?.profile_image ? (
+                            <Image src={user.user?.profile_image} alt="DP" width={40} height={40} className="w-full h-full object-cover" />
                         ) : (
                             <div className="w-full h-full bg-main-blue flex justify-center items-center text-white font-bold">
-                                {currentUser?.first_name?.charAt(0) || "U"}
+                                {user?.user?.first_name?.charAt(0) || "U"}
                             </div>
                         )}
                     </div>
@@ -287,7 +347,8 @@ export default function PostOpen({ initialPost: post, query }: { initialPost: an
                                     contentEditable
                                     role="textbox"
                                     aria-multiline="true"
-                                    data-placeholder={`Commenting as ${currentUser?.first_name + " " + currentUser?.last_name || "Guest"}`}
+                                    data-placeholder={`Commenting as ${user?.user?.first_name &&  (user?.user?.first_name + 
+                                        " " + user?.user?.last_name) || "..."}`}
                                     onInput={handleInput}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' && !e.shiftKey) {

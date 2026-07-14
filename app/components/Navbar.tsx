@@ -10,6 +10,7 @@ import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNowStrict } from "date-fns";
 import { toggleFollowState } from "@/actions/follow";
+import { useUser } from "@/context/UserContext";
 
 export default function Navbar() {
     const [toggleSearch, setToggleSearch] = useState(false);
@@ -17,10 +18,10 @@ export default function Navbar() {
     const router = useRouter();
     
     // Supabase States
-    const [userProfile, setUserProfile] = useState<any>(null);
     const [notifications, setNotifications] = useState<any[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const supabase = createClient();
+    const user = useUser();
 
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -37,7 +38,7 @@ export default function Navbar() {
         e.preventDefault(); 
         e.stopPropagation();
 
-        if (!userProfile?.id) return;
+        if (!user?.user?.id) return;
 
         // Determine if we are following or unfollowing
         const isCurrentlyFollowing = followedBackIds.has(senderId);
@@ -55,7 +56,7 @@ export default function Navbar() {
         });
 
         // Call the Redis Rate-Limited Action
-        const response = await toggleFollowState(userProfile.id, senderId, action);
+        const response = await toggleFollowState(user?.user.id, senderId, action);
 
         if (!response.success) {
             setLimitError({...limitError, follow: true})
@@ -108,54 +109,44 @@ export default function Navbar() {
     }, [searchQuery, supabase]);
 
     useEffect(() => {
-        const fetchUserAndData = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            
+
+
+        const fetchUserAndData = async () => { 
             if (user) {
-                // 1. Fetch Profile
-                const { data: profile } = await supabase
-                    .from("users")
-                    .select("id, first_name, username, profile_image")
-                    .eq("id", user.id)
-                    .single();
+
+                // =========================================================
+                // NEW: Fetch all the people the current user is ALREADY following
+                // =========================================================
+                const { data: myFollows } = await supabase
+                    .from("follows")
+                    .select("following_id")
+                    .eq("follower_id", user?.user?.id);
                     
-                if (profile) {
-                    setUserProfile(profile);
+                if (myFollows) {
+                    // Pre-fill the state with the IDs of people we already follow
+                    const currentlyFollowing = new Set(myFollows.map((f: any) => f.following_id));
+                    setFollowedBackIds(currentlyFollowing);
+                }
 
-                    // =========================================================
-                    // NEW: Fetch all the people the current user is ALREADY following
-                    // =========================================================
-                    const { data: myFollows } = await supabase
-                        .from("follows")
-                        .select("following_id")
-                        .eq("follower_id", profile.id);
-                        
-                    if (myFollows) {
-                        // Pre-fill the state with the IDs of people we already follow
-                        const currentlyFollowing = new Set(myFollows.map((f: any) => f.following_id));
-                        setFollowedBackIds(currentlyFollowing);
-                    }
+                // 2. Fetch Notifications
+                const { data: notifs } = await supabase
+                    .from("notifications")
+                    .select(`
+                        id,
+                        type,
+                        is_read,
+                        created_at,
+                        post_id,
+                        sender_id,
+                        sender:users!sender_id ( username, first_name, last_name, profile_image )
+                    `)
+                    .eq("recipient_id", user?.user?.id)
+                    .order("created_at", { ascending: false })
+                    .limit(20);
 
-                    // 2. Fetch Notifications
-                    const { data: notifs } = await supabase
-                        .from("notifications")
-                        .select(`
-                            id,
-                            type,
-                            is_read,
-                            created_at,
-                            post_id,
-                            sender_id,
-                            sender:users!sender_id ( username, first_name, last_name, profile_image )
-                        `)
-                        .eq("recipient_id", profile.id)
-                        .order("created_at", { ascending: false })
-                        .limit(20);
-
-                    if (notifs) {
-                        setNotifications(notifs);
-                        setUnreadCount(notifs.filter((n: any) => !n.is_read).length);
-                    }
+                if (notifs) {
+                    setNotifications(notifs);
+                    setUnreadCount(notifs.filter((n: any) => !n.is_read).length);
                 }
             }
         };
@@ -180,7 +171,7 @@ export default function Navbar() {
     };
 
     const markNotificationsAsRead = async () => {
-        if (unreadCount === 0 || !userProfile?.id) return;
+        if (unreadCount === 0 || !user?.user?.id) return;
         
         // Optimistic UI update
         setUnreadCount(0);
@@ -189,7 +180,7 @@ export default function Navbar() {
         await supabase
             .from("notifications")
             .update({ is_read: true })
-            .eq("recipient_id", userProfile.id)
+            .eq("recipient_id", user?.user.id)
             .eq("is_read", false);
     };
 
@@ -357,23 +348,23 @@ export default function Navbar() {
                         </div>
                     </div>
 
-                    <div className="h-[44px] border-r mx-1 border-r-main-border"></div>
+                    <div className="h-11 border-r mx-1 border-r-main-border"></div>
 
                     {/* PROFILE DROPDOWN CONTAINER */}
                     <div className="relative group">
-                        <Link href={userProfile?.username ? `/@${userProfile.username}` : "#"} className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden cursor-pointer border border-main-border transition-all hover:border-main-blue flex">
-                            {userProfile?.profile_image ? (
-                                <Image src={userProfile.profile_image} alt="Profile" width={200} height={200} className="w-full h-full object-cover" />
+                        <Link href={user?.user?.username ? `/@${user?.user.username}` : "#"} className="min-w-[45.5px] w-[45.5px] h-[45.5px] max-w-[45.5px] max-h-[45.5px] min-h-[45.5px] rounded-full overflow-hidden cursor-pointer border border-main-border transition-all hover:border-main-blue flex">
+                            {user?.user?.profile_image ? (
+                                <Image src={user?.user.profile_image} alt="Profile" width={200} height={200} className="w-full h-full object-cover" />
                             ) : (
                                 <div className="w-full h-full bg-main-blue text-white flex items-center justify-center font-bold text-lg uppercase">
-                                    {userProfile?.first_name?.charAt(0) || "U"}
+                                    {user?.user?.first_name?.charAt(0) || "U"}
                                 </div>
                             )}
                         </Link>
 
                         <div className="absolute right-0 top-full pt-3 w-48 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
                             <div className="bg-dark-clr border border-main-border rounded-xl shadow-2xl flex flex-col overflow-hidden text-[15px]">
-                                <Link href={userProfile?.username ? `/@${userProfile.username}` : "#"} className="px-4 py-3 text-foreground hover:bg-white/10 transition-colors border-b border-main-border">Profile</Link>
+                                <Link href={user?.user?.username ? `/@${user?.user.username}` : "#"} className="px-4 py-3 text-foreground hover:bg-white/10 transition-colors border-b border-main-border">Profile</Link>
                                 <Link href="/settings" className="px-4 py-3 text-foreground hover:bg-white/10 transition-colors border-b border-main-border">Settings</Link>
                                 <button onClick={handleLogout} className="px-4 py-3 text-left font-medium text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer">Log out</button>
                             </div>

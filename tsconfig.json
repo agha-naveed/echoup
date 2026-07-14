@@ -41,6 +41,9 @@
       ],
       "@/actions/*": [
         "app/actions/*"
+      ],
+      "@/context/*": [
+        "app/context/*"
       ]
     }
   },
