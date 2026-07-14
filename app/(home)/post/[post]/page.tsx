@@ -26,8 +26,9 @@ export default async function Page({
                 last_name,
                 profile_image
             ),
-            likes:likes (user_id),
-            comments:comments (id)
+            like_count,
+            comment_count,
+            likes:likes (id, user_id)
         `)
         .eq('id', resolvedParams.post)
         .single(); // .single() expects exactly one row, perfect for finding by ID

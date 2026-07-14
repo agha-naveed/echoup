@@ -58,14 +58,15 @@ export default function PostOpen({ initialPost: post, query }: { initialPost: an
     const [rateLimitError, setRateLimitError] = useState("");
 
     
-    // --- INITIALIZATION (Likes) ---
     useEffect(() => {
         const initLikes = async () => {
             if (user?.user?.id && post?.likes.length > 0) {
                 setIsLiked(post.likes.some((l: any) => l.user_id === user?.user?.id));
             }
-            setLikeCount(post?.likes?.length || 0);
-            setCommentCount(post?.comments.length || 0);
+            setLikeCount(post?.like_count);
+            setCommentCount(post?.comment_count);
+
+            console.log(post)
         };
         if(user?.user) {
             initLikes();
@@ -140,6 +141,7 @@ export default function PostOpen({ initialPost: post, query }: { initialPost: an
     // --- LIKES & SHARE ---
     const handleLikeToggle = async () => {
         if (!user.user) return;
+
         const newIsLiked = !isLiked;
         
         setIsLiked(newIsLiked);
@@ -182,9 +184,10 @@ export default function PostOpen({ initialPost: post, query }: { initialPost: an
             .from("comments")
             .insert({
                 post_id: post.id,
-                author_id: user?.user.id, 
+                author_id: user?.user?.id,
                 content: text
             })
+            // Fetching the joined user data right back so we can render their name/avatar
             .select(`id, content, created_at, author:users (id, username, first_name, last_name, profile_image)`)
             .single();
 
