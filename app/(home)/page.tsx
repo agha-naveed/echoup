@@ -29,6 +29,7 @@ export default async function Page() {
                 content,
                 image_url,
                 video_url,
+                is_reel,
                 created_at,
                 author:users ( id, username, first_name, last_name, profile_image ),
                 likes ( id, user_id, photo_index ),

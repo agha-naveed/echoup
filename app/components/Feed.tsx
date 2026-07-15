@@ -8,22 +8,6 @@ export default function FeedPage({ initialPosts }: { initialPosts: any[] }) {
   const [posts, setPosts] = useState<any[]>(initialPosts);
   const [newPosts, setNewPosts] = useState<any[]>([]);
 
-  // useEffect(() => {
-  //   const interval = setInterval(async () => {
-  //     if (posts.length === 0) return;
-
-  //     const lastId = posts[0].id;
-  //     const res = await fetch(`/api/posts?after=${lastId}`, { cache: "no-store" });
-  //     const data = await res.json();
-
-  //     if (data.length > 0) {
-  //       setNewPosts(data);
-  //     }
-  //   }, 5000);
-
-  //   return () => clearInterval(interval);
-  // }, [posts]);
-
   const handleShowNewPosts = () => {
     setPosts((prev) => [...newPosts, ...prev]);
     setNewPosts([]);

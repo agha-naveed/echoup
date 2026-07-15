@@ -10,6 +10,7 @@ import { createClient } from '@/utils/supabase/client';
 import { toggleLikeState } from '@/actions/like';
 import { submitComment } from '@/actions/comment';
 import Video from './CustomVideoPlayer';
+import { useUser } from '../context/UserContext';
 
 type Props = {
     post: any
@@ -23,23 +24,12 @@ export default function Post({ post }: Props) {
         comment: false,
         like: false
     })
+    const user = useUser()
 
-    // Fetch the active Supabase user on mount
     useEffect(() => {
-        const fetchUser = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                // Fetch their actual profile data from public.users
-                const { data: profile } = await supabase
-                    .from("users")
-                    .select("*")
-                    .eq("id", user.id)
-                    .single();
-                setCurrentUser(profile);
-            }
-        };
-        fetchUser();
-    }, [supabase]);
+        // console.log(post)
+        setCurrentUser(user)
+    }, [user])
 
     const images = post.image_url || [];
     const videoUrl = post.video_url || null;
@@ -66,7 +56,7 @@ export default function Post({ post }: Props) {
     const visibleComments = generalComments.slice(0, visibleCount);
 
     const generalLikes = likes.filter((l: any) => l.photoIndex === null || l.photo_index === null);
-    const isLiked = generalLikes.some((l: any) => l.userId === currentUser?.id || l.user_id === currentUser?.id);
+    const isLiked = generalLikes.some((l: any) => l.userId === currentUser?.user?.id || l.user_id === currentUser?.user?.id);
 
     const totalLikes = likes.length;
     const totalComments = comments.length;
@@ -79,15 +69,15 @@ export default function Post({ post }: Props) {
     // FEED LIKE LOGIC (Optimistic UI + Debounce + Supabase)
     // =====================================================
     const handleLike = () => {
-        if (!post?.id || !currentUser || limitError.like) return; // Prevent clicking if locked
+        if (!post?.id || !currentUser?.user.user || limitError.like) return; // Prevent clicking if locked
 
         const wasLiked = isLiked;
 
         // 1. Optimistic Update
         if (wasLiked) {
-            setLikes(prev => prev.filter(l => !((l.userId === currentUser.id || l.user_id === currentUser.id) && (l.photoIndex === null || l.photo_index === null))));
+            setLikes(prev => prev.filter(l => !((l.userId === currentUser?.user.id || l.user_id === currentUser?.user.id) && (l.photoIndex === null || l.photo_index === null))));
         } else {
-            setLikes(prev => [...prev, { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: null }]);
+            setLikes(prev => [...prev, { id: `temp-like-${Date.now()}`, user_id: currentUser?.user.id, photo_index: null }]);
             
             setLikeAnimation(true);
             setTimeout(() => setLikeAnimation(false), 800); // Hide it after the animation finishes
@@ -97,7 +87,7 @@ export default function Post({ post }: Props) {
         if (likeTimeoutRef.current) clearTimeout(likeTimeoutRef.current);
 
         likeTimeoutRef.current = setTimeout(async () => {
-            const response = await toggleLikeState(currentUser.id, post.id, null, wasLiked ? "unlike" : "like");
+            const response = await toggleLikeState(currentUser?.user.id, post.id, null, wasLiked ? "unlike" : "like");
             
             if (!response.success) {
                 // Trigger the rate limit lock for 10 seconds
@@ -108,9 +98,9 @@ export default function Post({ post }: Props) {
 
                 // Revert state because Redis blocked them
                 if (wasLiked) {
-                    setLikes(prev => [...prev, { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: null }]);
+                    setLikes(prev => [...prev, { id: `temp-like-${Date.now()}`, user_id: currentUser?.user.id, photo_index: null }]);
                 } else {
-                    setLikes(prev => prev.filter(l => !((l.userId === currentUser.id || l.user_id === currentUser.id) && (l.photoIndex === null || l.photo_index === null))));
+                    setLikes(prev => prev.filter(l => !((l.userId === currentUser?.user.id || l.user_id === currentUser?.user.id) && (l.photoIndex === null || l.photo_index === null))));
                 }
             }
         }, 800);
@@ -119,7 +109,7 @@ export default function Post({ post }: Props) {
     const handleFeedCommentSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const text = feedComment.trim();
-        if (!text || isSubmittingComment || !currentUser || !post?.id) return;
+        if (!text || isSubmittingComment || !currentUser?.user || !post?.id) return;
 
         setIsSubmittingComment(true);
 
@@ -130,10 +120,10 @@ export default function Post({ post }: Props) {
             photo_index: null, 
             created_at: new Date().toISOString(),
             author: {
-                username: currentUser.username,
-                first_name: currentUser.first_name,
-                last_name: currentUser.last_name,
-                profile_image: currentUser.profile_image,
+                username: currentUser?.user.username,
+                first_name: currentUser?.user.first_name,
+                last_name: currentUser?.user.last_name,
+                profile_image: currentUser?.user.profile_image,
             }
         };
 
@@ -141,7 +131,7 @@ export default function Post({ post }: Props) {
         setFeedComment("");
 
         // 2. Call Server Action
-        const response = await submitComment(currentUser.id, post.id, text, null);
+        const response = await submitComment(currentUser?.user.id, post.id, text, null);
 
         if (!response.success) {
             setLimitError({...limitError, comment: true})
@@ -367,11 +357,11 @@ export default function Post({ post }: Props) {
                 <form onSubmit={handleFeedCommentSubmit} className='flex items-center gap-3'>
 
                     <div className='min-w-8 h-8 rounded-full overflow-hidden border border-main-border shrink-0'>
-                        {currentUser?.profile_image ? (
-                            <Image src={currentUser.profile_image} placeholder='blur' blurDataURL={currentUser.profile_image} alt="DP" width={40} height={40} className="w-full h-full object-cover" />
+                        {currentUser?.user?.profile_image ? (
+                            <Image src={currentUser?.user.profile_image} placeholder='blur' blurDataURL={currentUser?.user.profile_image} alt="DP" width={40} height={40} className="w-full h-full object-cover" />
                         ) : (
                             <div className="w-full h-full bg-main-blue flex items-center justify-center text-white font-bold text-[12px] uppercase">
-                                {currentUser?.first_name?.charAt(0) || "U"}
+                                {currentUser?.user?.first_name?.charAt(0) || "U"}
                             </div>
                         )}
                     </div>
@@ -382,14 +372,14 @@ export default function Post({ post }: Props) {
                             placeholder={limitError.comment ? "Try Again in Few Seconds..." : "Add a comment..."}
                             value={feedComment}
                             onChange={(e) => setFeedComment(e.target.value)}
-                            disabled={isSubmittingComment || !currentUser || limitError.comment}
+                            disabled={isSubmittingComment || !currentUser?.user || limitError.comment}
                             className='bg-transparent border-none outline-none w-full text-[14px] text-foreground placeholder:text-gray-500 disabled:opacity-50'
                         />
 
                         <button
                             type="submit"
-                            disabled={!feedComment.trim() || isSubmittingComment || !currentUser}
-                            className={`font-semibold text-[14px] ml-2 transition-colors ${!feedComment.trim() || isSubmittingComment || !currentUser
+                            disabled={!feedComment.trim() || isSubmittingComment || !currentUser?.user}
+                            className={`font-semibold text-[14px] ml-2 transition-colors ${!feedComment.trim() || isSubmittingComment || !currentUser?.user
                                 ? 'text-main-blue/50 cursor-default'
                                 : 'text-main-blue hover:text-white cursor-pointer'
                                 }`}

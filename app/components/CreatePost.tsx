@@ -96,7 +96,7 @@ const CreatePost = () => {
         }
     };
 
-    // --- NEW: VIDEO LOGIC ---
+    // --- VIDEO LOGIC ---
     const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -119,9 +119,39 @@ const CreatePost = () => {
             return;
         }
 
-        setIsEmpty(false);
-        setSelectedVideo(file);
-        setErrorMsg(null);
+        // --- NEW: DURATION CHECK LOGIC ---
+        // 1. Create a temporary URL for the file
+        const videoUrl = URL.createObjectURL(file);
+        
+        // 2. Create an invisible video element in memory
+        const videoElement = document.createElement("video");
+        videoElement.src = videoUrl;
+
+        // 3. Listen for the metadata to load so we can read the duration
+        videoElement.onloadedmetadata = () => {
+            const durationInSeconds = videoElement.duration;
+            
+            // 4. Automatically check/uncheck the Reel toggle based on the 30s rule
+            if (durationInSeconds < 30) {
+                setIsReel(true);
+            } else {
+                setIsReel(false);
+            }
+
+            // 5. Clean up memory to prevent leaks
+            URL.revokeObjectURL(videoUrl);
+
+            // 6. Update the UI states
+            setIsEmpty(false);
+            setSelectedVideo(file);
+            setErrorMsg(null);
+        };
+
+        // Fallback in case the video file is corrupted and metadata fails to load
+        videoElement.onerror = () => {
+            URL.revokeObjectURL(videoUrl);
+            setErrorMsg("Error reading video file. Please try another video.");
+        };
     };
 
     const removeVideo = () => {
@@ -201,6 +231,7 @@ const CreatePost = () => {
             setIsPosting(false);
         }
     };
+    
 
     return (
         <div ref={containerRef}
@@ -272,16 +303,6 @@ const CreatePost = () => {
                 {selectedVideo && (
                     <div className="relative group w-fit mt-5">
                         {/* Toggle switch for Reel */}
-                        <label className={`absolute top-2 -left-2 z-10 flex items-center gap-1.5 rounded-xl px-3 py-1 text-[14px] font-medium cursor-pointer transition-colors ${isReel ? "bg-emerald-600 text-white" : "bg-gray-700 text-gray-300"}`}>
-                            <input
-                                type="checkbox"
-                                checked={isReel}
-                                onChange={(e) => setIsReel(e.target.checked)}
-                                className="accent-white w-2.5"
-                            />
-                            Reel
-                        </label>
-
                         <video
                             src={URL.createObjectURL(selectedVideo)}
                             className="max-h-[200px] rounded-xl border border-main-border object-cover"

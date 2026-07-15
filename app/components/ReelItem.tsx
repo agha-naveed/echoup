@@ -1,6 +1,6 @@
 "use client"
 import Image from "next/image";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { GoHeart, GoComment, GoShare } from "react-icons/go";
 import { FaHeart } from "react-icons/fa"; 
 import { IoMdClose, IoMdSend } from "react-icons/io"; 
@@ -17,6 +17,9 @@ interface ReelItemProps {
 
 export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted }: ReelItemProps) {
     const supabase = createClient();
+
+    // 2. Create a ref for this specific reel container
+    const itemRef = useRef<HTMLDivElement>(null);
 
     // --- LIKES STATE ---
     const hasLikedInitially = reel.likes?.some((like: any) => like.user_id === currentUser?.id);
@@ -37,6 +40,28 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
     // --- RATE LIMITING STATE ---
     const [lastCommentTime, setLastCommentTime] = useState(0);
     const [rateLimitError, setRateLimitError] = useState("");
+
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    // When this specific reel takes up 60% or more of the screen
+                    if (entry.isIntersecting) {
+                        // Silently update the URL in the browser address bar!
+                        window.history.replaceState(null, '', `/reels/${reel.id}`);
+                    }
+                });
+            },
+            { threshold: 0.6 } // 0.6 means 60% visibility
+        );
+
+        if (itemRef.current) {
+            observer.observe(itemRef.current);
+        }
+
+        return () => observer.disconnect();
+    }, [reel.id]);
 
     // --- LIKE LOGIC ---
     const handleLikeToggle = async () => {
@@ -156,7 +181,7 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
     };
 
     return (
-        <div className="relative w-full h-full snap-start flex justify-center items-center sm:py-1 overflow-hidden">
+        <div ref={itemRef} className="relative w-full h-full snap-start flex justify-center items-center sm:py-1 overflow-hidden">
             <div className="flex flex-row items-center justify-center w-full sm:w-auto h-full sm:h-auto max-h-full">
 
                 {/* THE VIDEO PLAYER */}

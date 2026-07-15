@@ -8,7 +8,11 @@ import { AiOutlineLoading3Quarters } from "react-icons/ai";
 import ReelItem from "./ReelItem";
 
 
-export default function ReelsFeed() {
+interface ReelsFeedProps {
+    initialReelId?: string;
+}
+
+export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
 
     const [isGlobalMuted, setIsGlobalMuted] = useState(true);
 
@@ -42,14 +46,26 @@ export default function ReelsFeed() {
 
             if (error) {
                 console.error("Error fetching reels:", error);
-            } else {
-                setReels(data || []);
+            }
+            else if (data) {
+                if (initialReelId) {
+                    const targetReel = data.find(reel => reel.id === initialReelId);
+                    const otherReels = data.filter(reel => reel.id !== initialReelId);
+                    
+                    if (targetReel) {
+                        setReels([targetReel, ...otherReels]);
+                    } else {
+                        setReels(data); // Fallback just in case the ID is invalid
+                    }
+                } else {
+                    setReels(data); // Normal chronological feed
+                }
             }
             setIsLoading(false);
         };
 
         fetchReelsData();
-    }, [supabase]);
+    }, [initialReelId, supabase]);
 
     if (isLoading) {
         return (

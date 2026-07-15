@@ -108,9 +108,9 @@ export default function Navbar() {
         return () => clearTimeout(delayDebounceFn);
     }, [searchQuery, supabase]);
 
+
     useEffect(() => {
-
-
+        
         const fetchUserAndData = async () => { 
             if (user) {
 

@@ -12,7 +12,7 @@ export default function MainWrapper({
   children: React.ReactNode;
 }>) {
   const pathname = usePathname();
-  const isReelsPage = pathname === '/reels';
+  const isReelsPage = pathname.startsWith('/reels');
   return (
     <>
       <div>
