@@ -27,7 +27,6 @@ export default function Post({ post }: Props) {
     const user = useUser()
 
     useEffect(() => {
-        // console.log(post)
         setCurrentUser(user)
     }, [user])
 
@@ -69,7 +68,8 @@ export default function Post({ post }: Props) {
     // FEED LIKE LOGIC (Optimistic UI + Debounce + Supabase)
     // =====================================================
     const handleLike = () => {
-        if (!post?.id || !currentUser?.user.user || limitError.like) return; // Prevent clicking if locked
+
+        if (!post?.id || !currentUser?.user || limitError.like) return; // Prevent clicking if locked
 
         const wasLiked = isLiked;
 

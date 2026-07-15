@@ -8,25 +8,30 @@ interface VideoPlayerProps {
     poster?: string;
     isReel?: boolean; 
     isPost?: boolean;
-    // NEW: Allow the parent to control the mute state
     globalMuted?: boolean; 
     onToggleMuted?: () => void; 
+    // NEW: Allow parent to control volume
+    globalVolume?: number;
+    onVolumeChange?: (newVolume: number) => void;
+    style?: string;
 }
 
-export default function Video({ src, poster, isReel = false, isPost = false, globalMuted, onToggleMuted }: VideoPlayerProps) {
+export default function Video({ src, poster, isReel = false, isPost = false, globalMuted, onToggleMuted, globalVolume, onVolumeChange, style }: VideoPlayerProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [progress, setProgress] = useState(0);
     
-    // BACKUP LOCAL STATE: Only used if globalMuted isn't provided
+    // BACKUP LOCAL STATES
     const [localMuted, setLocalMuted] = useState(true); 
+    const [localVolume, setLocalVolume] = useState(1);
 
-    // Determine which mute state we are actually using
+    // Determine which states we are actually using (Global vs Local)
     const isCurrentlyMuted = globalMuted !== undefined ? globalMuted : localMuted;
+    const currentVolume = globalVolume !== undefined ? globalVolume : localVolume;
 
-    // 1. Play/Pause Logic (Remains unchanged)
+    // Play/Pause Logic
     const togglePlay = () => {
         if (videoRef.current) {
             if (isPlaying) {
@@ -38,24 +43,53 @@ export default function Video({ src, poster, isReel = false, isPost = false, glo
         }
     };
 
-    // 2. NEW: Mute/Unmute Logic
+    // Mute/Unmute Logic
     const toggleMute = (e: React.MouseEvent) => {
         e.stopPropagation(); 
+        
+        // UX Fix: If they click unmute but volume is 0, give them 100% volume
+        if (isCurrentlyMuted && currentVolume === 0) {
+            if (onVolumeChange) onVolumeChange(1);
+            else setLocalVolume(1);
+        }
+
         if (onToggleMuted) {
-            // Tell the parent feed to toggle the global mute
             onToggleMuted();
         } else {
-            // Fallback for standard posts
             setLocalMuted(!localMuted);
         }
     };
 
-    // 3. NEW: Force the video HTML element to sync with our React state
+    // Handle Volume Slider Changes
+    const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newVolume = parseFloat(e.target.value);
+        
+        // Update the volume state (Global or Local)
+        if (onVolumeChange) {
+            onVolumeChange(newVolume);
+        } else {
+            setLocalVolume(newVolume);
+        }
+        
+        // Auto-mute if dragged to 0
+        if (newVolume === 0 && !isCurrentlyMuted) {
+            if (onToggleMuted) onToggleMuted();
+            else setLocalMuted(true);
+        } 
+        // Auto-unmute if dragged above 0 while currently muted
+        else if (newVolume > 0 && isCurrentlyMuted) {
+            if (onToggleMuted) onToggleMuted();
+            else setLocalMuted(false);
+        }
+    };
+
+    // Force the video HTML element to sync with our React states
     useEffect(() => {
         if (videoRef.current) {
             videoRef.current.muted = isCurrentlyMuted;
+            videoRef.current.volume = currentVolume; // Sync HTML volume with React state
         }
-    }, [isCurrentlyMuted]);
+    }, [isCurrentlyMuted, currentVolume]);
 
     // Update Progress Bar
     const handleTimeUpdate = () => {
@@ -88,17 +122,14 @@ export default function Video({ src, poster, isReel = false, isPost = false, glo
             { threshold: 0.6 } 
         );
 
-        if (containerRef.current) {
-            observer.observe(containerRef.current);
-        }
-
+        if (containerRef.current) observer.observe(containerRef.current);
         return () => observer.disconnect();
     }, []);
 
     return (
         <div
             ref={containerRef}
-            className={`relative h-full flex justify-center overflow-hidden cursor-pointer group ${isReel ? "w-fit bg-transparent items-center" : "h-[85%] bg-black rounded-xl border border-main-border"} ${isPost && "max-h-125 items-center"}`}
+            className={`relative h-full flex justify-center ${style} overflow-hidden cursor-pointer group ${isReel ? "w-fit bg-transparent items-center" : "h-[85%] bg-black rounded-xl border border-main-border"} ${isPost && "max-h-125 items-center"}`}
             onClick={togglePlay}
         >
             <video
@@ -107,7 +138,7 @@ export default function Video({ src, poster, isReel = false, isPost = false, glo
                 poster={poster}
                 loop
                 playsInline
-                muted={isCurrentlyMuted} // Controlled by our synced state
+                muted={isCurrentlyMuted} 
                 onTimeUpdate={handleTimeUpdate}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
@@ -122,19 +153,32 @@ export default function Video({ src, poster, isReel = false, isPost = false, glo
                 </div>
             )}
 
-            <button
-                onClick={toggleMute}
-                className="absolute top-4 right-4 p-2 bg-black/50 backdrop-blur-md rounded-full text-white/90 hover:bg-black/70 transition-colors z-10"
+            <div 
+                className={`absolute flex items-center gap-2 z-20 group/volume ${isReel ? "top-4 right-4" : "bottom-6 right-4"}`}
+                onClick={(e) => e.stopPropagation()} 
             >
-                {/* Check the synced state for the icon */}
-                {isCurrentlyMuted ? <IoVolumeMute size={20} /> : <IoVolumeHigh size={20} />}
-            </button>
+                <div className="overflow-hidden transition-all duration-300 w-0 opacity-0 group-hover/volume:w-24 group-hover/volume:opacity-100 bg-black/50 backdrop-blur-md rounded-full flex items-center px-2 h-10">
+                    <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={isCurrentlyMuted ? 0 : currentVolume} // Bind to synced volume
+                        onChange={handleVolumeChange}
+                        className="w-full h-1 rounded-lg appearance-none cursor-pointer accent-main-blue bg-white/30"
+                    />
+                </div>
+                
+                <button
+                    onClick={toggleMute}
+                    className="p-2 bg-black/50 backdrop-blur-md rounded-full text-white/90 hover:bg-black/70 transition-colors shrink-0"
+                >
+                    {isCurrentlyMuted || currentVolume === 0 ? <IoVolumeMute size={20} /> : <IoVolumeHigh size={20} />}
+                </button>
+            </div>
 
             <div className={`absolute bottom-0 left-0 w-full h-1 bg-white/20 z-10`}>
-                <div
-                    className="h-full bg-main-blue transition-all duration-75 ease-linear"
-                    style={{ width: `${progress}%` }}
-                />
+                <div className="h-full bg-main-blue transition-all duration-75 ease-linear" style={{ width: `${progress}%` }} />
             </div>
         </div>
     );

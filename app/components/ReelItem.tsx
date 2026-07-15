@@ -13,9 +13,11 @@ interface ReelItemProps {
     currentUser: any;
     globalMuted: boolean;
     onToggleMuted: () => void;
+    globalVolume: number;
+    onVolumeChange: (newVolume: number) => void;
 }
 
-export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted }: ReelItemProps) {
+export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted, globalVolume, onVolumeChange }: ReelItemProps) {
     const supabase = createClient();
 
     // 2. Create a ref for this specific reel container
@@ -186,7 +188,10 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
 
                 {/* THE VIDEO PLAYER */}
                 <div className="relative w-fit h-full flex flex-col justify-center overflow-hidden sm:rounded-xl bg-black shadow-[0_0_20px_rgba(0,0,0,0.5)] z-10">
-                    <Video src={reel.video_url} isReel={true} globalMuted={globalMuted} onToggleMuted={onToggleMuted} />
+                    <Video src={reel.video_url} isReel={true} globalMuted={globalMuted} onToggleMuted={onToggleMuted} 
+                    globalVolume={globalVolume}
+                    onVolumeChange={onVolumeChange}
+                    />
 
                     <div className="absolute bottom-0 left-0 w-full pointer-events-none flex flex-col justify-end pb-4 px-3 sm:px-4 z-20">
                         <div className="absolute bottom-0 left-0 w-full h-[80%] bg-gradient-to-t from-black/80 via-black/30 to-transparent -z-10 pointer-events-none" />

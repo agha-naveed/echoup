@@ -33,13 +33,15 @@ export default async function Page() {
                 created_at,
                 author:users ( id, username, first_name, last_name, profile_image ),
                 likes ( id, user_id, photo_index ),
+                like_count,
+                comment_count,
                 comments (
                     id, content, created_at, photo_index,
                     author:users ( id, username, first_name, last_name, profile_image )
                 ),
                 shares ( id, user_id, photo_index )
             `)
-            .in("author_id", allowedIds) // <--- THIS IS THE MAGIC LINE
+            .in("author_id", allowedIds)
             .order("created_at", { ascending: false })
             .limit(20);
 

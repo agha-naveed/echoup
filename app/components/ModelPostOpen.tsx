@@ -473,6 +473,7 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                         <div className="w-full lg:w-[70vw] h-full relative bg-black flex items-center justify-center group/slider">
                             <div className="w-full h-full relative flex items-center justify-center">
                                 <Video
+                                    style="w-full items-center !h-[90vh]"
                                     src={hasVideo}
                                     isReel={false}
                                 />

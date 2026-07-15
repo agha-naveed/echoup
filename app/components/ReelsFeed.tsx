@@ -15,6 +15,7 @@ interface ReelsFeedProps {
 export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
 
     const [isGlobalMuted, setIsGlobalMuted] = useState(true);
+    const [globalVolume, setGlobalVolume] = useState(1);
 
     const [reels, setReels] = useState<any[]>([]);
     const [currentUser, setCurrentUser] = useState<any>(null);
@@ -95,6 +96,8 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
                     currentUser={currentUser}
                     globalMuted={isGlobalMuted}
                     onToggleMuted={() => setIsGlobalMuted(!isGlobalMuted)}
+                    globalVolume={globalVolume}
+                    onVolumeChange={setGlobalVolume}
                 />
             ))}
         </div>
