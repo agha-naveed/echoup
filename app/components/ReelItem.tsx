@@ -7,6 +7,7 @@ import { IoMdClose, IoMdSend } from "react-icons/io";
 import { AiOutlineLoading3Quarters } from "react-icons/ai"; // Added for loading spinner
 import Video from "./CustomVideoPlayer";
 import { createClient } from "@/utils/supabase/client";
+import Link from "next/link";
 
 interface ReelItemProps {
     reel: any;
@@ -22,11 +23,10 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
 
     // 2. Create a ref for this specific reel container
     const itemRef = useRef<HTMLDivElement>(null);
-
     // --- LIKES STATE ---
     const hasLikedInitially = reel.likes?.some((like: any) => like.user_id === currentUser?.id);
     const [isLiked, setIsLiked] = useState(hasLikedInitially);
-    const [likeCount, setLikeCount] = useState(reel.likes?.length || 0);
+    const [likeCount, setLikeCount] = useState(reel.like_count);
     
     // --- COMMENTS STATE ---
     const [showComments, setShowComments] = useState(false);
@@ -34,7 +34,7 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
     const [commentText, setCommentText] = useState("");
     const [isFetchingComments, setIsFetchingComments] = useState(false);
     const [isPosting, setIsPosting] = useState(false);
-    const [commentCount, setCommentCount] = useState(reel.comments_count?.[0]?.count || 0);
+    const [commentCount, setCommentCount] = useState(reel.comment_count || 0);
     
     // --- SHARE STATE ---
     const [copied, setCopied] = useState(false);
@@ -71,7 +71,7 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
 
         const newIsLiked = !isLiked;
         setIsLiked(newIsLiked);
-        setLikeCount((prev: number) => newIsLiked ? prev + 1 : prev - 1);
+        setLikeCount(isLiked ? likeCount - 1 : likeCount + 1);
 
         if (newIsLiked) {
             await supabase.from("likes").insert({ post_id: reel.id, user_id: currentUser.id });
@@ -96,7 +96,7 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                 id,
                 content,
                 created_at,
-                author:users ( id, username, first_name, profile_image )
+                author:users ( id, username, first_name, last_name, profile_image )
             `)
             .eq("post_id", reel.id) // Assuming your comments table links via post_id
             .order("created_at", { ascending: false });
@@ -280,6 +280,7 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                                         <p className="text-sm">Start the conversation!</p>
                                     </div>
                                 ) : (
+                                    // comment.author.id == currentUser.author.id
                                     comments.map((comment) => (
                                         <div key={comment.id} className="flex gap-3">
                                             <div className="w-8 h-8 rounded-full bg-dark-clr overflow-hidden shrink-0 border border-main-border">
@@ -292,12 +293,18 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                                                 )}
                                             </div>
                                             <div className="flex flex-col">
-                                                <div className="flex items-baseline gap-2">
-                                                    <span className="text-sm font-semibold text-foreground">
-                                                        @{comment.author?.username || comment.author?.first_name?.toLowerCase()}
-                                                    </span>
+                                                <div className="flex items-center gap-2">
+                                                    <Link href={`/@${comment.author?.username}`} className="text-sm font-semibold text-foreground">
+                                                        {comment.author?.first_name + " " + comment.author?.last_name}
+                                                    </Link>
                                                     <span className="text-xs text-gray-500">
                                                         {new Date(comment.created_at).toLocaleDateString()}
+                                                    </span>
+                                                    <span className="text-white text-[12px] flex items-center gap-1 bg-dark-clr py-0.5 px-2 rounded-lg">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 21 21">
+                                                            <path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" d="M17 4a2.12 2.12 0 0 1 0 3l-9.5 9.5l-4 1l1-3.944l9.504-9.552a2.116 2.116 0 0 1 2.864-.125zM9.5 17.5h8m-2-11l1 1"></path>
+                                                        </svg>
+                                                        <span className="text-[10px]">Author</span>
                                                     </span>
                                                 </div>
                                                 <p className="text-sm text-foreground/90 mt-0.5">{comment.content}</p>
@@ -314,10 +321,10 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                                 )}
                                 <div className="flex items-center gap-2">
                                     <div className="w-8 h-8 rounded-full bg-main-blue flex items-center justify-center text-white shrink-0 overflow-hidden">
-                                        {currentUser?.user_metadata?.profile_image ? (
-                                            <Image src={currentUser.user_metadata.profile_image} alt="You" width={32} height={32} className="object-cover w-full h-full" />
+                                        {currentUser?.profile_image ? (
+                                            <Image src={currentUser.profile_image} alt="You" width={32} height={32} className="object-cover w-full h-full" />
                                         ) : (
-                                            currentUser?.user_metadata?.first_name?.charAt(0) || "U"
+                                            currentUser?.first_name?.charAt(0) || "U"
                                         )}
                                     </div>
                                     <div className="flex-1 flex items-center bg-dark-clr border border-main-border rounded-full pr-2">

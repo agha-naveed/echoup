@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { AiOutlineLoading3Quarters } from "react-icons/ai";
 import ReelItem from "./ReelItem";
+import { useUser } from "../context/UserContext";
 
 
 interface ReelsFeedProps {
@@ -22,12 +23,13 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
     const [isLoading, setIsLoading] = useState(true);
     
     const supabase = createClient()
+    const user = useUser();
 
     useEffect(() => {
         const fetchReelsData = async () => {
             // 1. Get the current user (so we know who is liking the videos)
-            const { data: { user } } = await supabase.auth.getUser();
-            setCurrentUser(user);
+
+            setCurrentUser(user?.user);
 
             // 2. Fetch all posts where is_reel is true
             const { data, error } = await supabase
@@ -39,8 +41,8 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
                     created_at,
                     author:users ( id, username, first_name, last_name, profile_image ),
                     likes ( user_id ),
-                    likes_count:likes ( count ),
-                    comments_count:comments ( count )
+                    like_count,
+                    comment_count
                 `)
                 .eq("is_reel", true)
                 .order("created_at", { ascending: false });
@@ -66,7 +68,7 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
         };
 
         fetchReelsData();
-    }, [initialReelId, supabase]);
+    }, [initialReelId, supabase, user]);
 
     if (isLoading) {
         return (
