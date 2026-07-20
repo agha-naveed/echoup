@@ -83,12 +83,24 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
         
         const wasLiked = isLiked;
 
-        // Optimistic UI Update
+        // Optimistic UI Update for the Modal
         if (wasLiked) {
             setLikes((prev: any[]) => prev.filter(l => !((l.userId ?? l.user_id) === currentUser.id && (l.photoIndex ?? l.photo_index) === currentIndex)));
         } else {
             setLikes((prev: any[]) => [...prev, { id: `temp-like-${Date.now()}`, user_id: currentUser.id, photo_index: currentIndex }]);
         }
+
+        // ==========================================
+        // NEW: SHOUT TO THE REST OF THE APP
+        // ==========================================
+        window.dispatchEvent(new CustomEvent('postLikeToggled', {
+            detail: { 
+                postId: post.id, 
+                isLiked: !wasLiked, 
+                photoIndex: currentIndex 
+            }
+        }));
+        // ==========================================
 
         if (likeTimeoutRef.current) clearTimeout(likeTimeoutRef.current);
 
@@ -103,6 +115,11 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
                 } else {
                     setLikes((prev: any[]) => prev.filter(l => !((l.userId ?? l.user_id) === currentUser.id && (l.photoIndex ?? l.photo_index) === currentIndex)));
                 }
+                
+                // NEW: Revert the shout if the database failed
+                window.dispatchEvent(new CustomEvent('postLikeToggled', {
+                    detail: { postId: post.id, isLiked: wasLiked, photoIndex: currentIndex }
+                }));
             }
         }, 800);
     };

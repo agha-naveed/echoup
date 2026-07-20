@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { GoHeart, GoComment, GoShare } from "react-icons/go";
 import { FaHeart } from "react-icons/fa"; 
 import { IoMdClose, IoMdSend } from "react-icons/io"; 
-import { AiOutlineLoading3Quarters } from "react-icons/ai"; // Added for loading spinner
+import { AiOutlineLoading3Quarters } from "react-icons/ai";
 import Video from "./CustomVideoPlayer";
 import { createClient } from "@/utils/supabase/client";
 import Link from "next/link";

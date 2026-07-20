@@ -64,6 +64,8 @@ export default function Post({ post }: Props) {
     const likeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [likeAnimation, setLikeAnimation] = useState(false);
 
+
+
     // =====================================================
     // FEED LIKE LOGIC (Optimistic UI + Debounce + Supabase)
     // =====================================================
@@ -150,6 +152,40 @@ export default function Post({ post }: Props) {
         };
     }, []);
 
+
+    // ==========================================
+    // NEW: SYNC LIKES FROM MODAL
+    // ==========================================
+    useEffect(() => {
+        const handleSyncLike = (event: any) => {
+            // 1. Check if the event is for THIS specific post
+            if (event.detail.postId === post.id) {
+                const { isLiked: newIsLiked, photoIndex } = event.detail;
+                
+                // 2. Update the local likes array to match the modal's action
+                setLikes((prev: any[]) => {
+                    if (newIsLiked) {
+                        // Add the like to the state
+                        return [...prev, { 
+                            id: `sync-like-${Date.now()}`, 
+                            user_id: currentUser?.user?.id, 
+                            photo_index: photoIndex 
+                        }];
+                    } else {
+                        // Remove the like from the state
+                        return prev.filter(l => !(
+                            (l.userId === currentUser?.user?.id || l.user_id === currentUser?.user?.id) && 
+                            (l.photoIndex === photoIndex || l.photo_index === photoIndex)
+                        ));
+                    }
+                });
+            }
+        };
+
+        window.addEventListener('postLikeToggled', handleSyncLike);
+        return () => window.removeEventListener('postLikeToggled', handleSyncLike);
+    }, [post.id, currentUser]);
+    
     // ==========================================
 
     const ImageTile = ({ src, alt, width = 600, height = 600, idx, cHeight }: any) => (
