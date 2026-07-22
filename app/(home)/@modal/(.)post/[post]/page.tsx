@@ -1,4 +1,4 @@
-import ModelPostOpen from "@/app/components/ModelPostOpen"; // Adjust path if needed
+import ModelPostOpen from "@/app/components/modals/ModelPostOpen"; // Adjust path if needed
 import { createClient } from "@/utils/supabase/server";
 import { notFound } from "next/navigation";
 

@@ -13,28 +13,30 @@ import { GoComment, GoHeart, GoHeartFill } from "react-icons/go";
 import { createClient } from "@/utils/supabase/client";
 import { toggleLikeState } from '@/actions/like';
 import { submitComment } from '@/actions/comment';
-import Video from "./CustomVideoPlayer";
+import Video from "../CustomVideoPlayer";
+import { useUser } from "@/app/context/UserContext";
 
 export default function ModelPostOpen({ initialPost, query }: { initialPost: any, query: any }) {
 
     const supabase = createClient();
-    const [currentUser, setCurrentUser] = useState<any>(null);
 
+    const { user: currentUser } = useUser();
+    
     // 1. Fetch the active Supabase user on mount
-    useEffect(() => {
-        const fetchUser = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                const { data: profile } = await supabase
-                    .from("users")
-                    .select("*")
-                    .eq("id", user.id)
-                    .single();
-                setCurrentUser(profile);
-            }
-        };
-        fetchUser();
-    }, [supabase]);
+    // useEffect(() => {
+    //     const fetchUser = async () => {
+    //         const { data: { user } } = await supabase.auth.getUser();
+    //         if (user) {
+    //             const { data: profile } = await supabase
+    //                 .from("users")
+    //                 .select("*")
+    //                 .eq("id", user.id)
+    //                 .single();
+    //             setCurrentUser(profile);
+    //         }
+    //     };
+    //     fetchUser();
+    // }, [supabase]);
 
     console.log(initialPost)
     const photoQuery = query.photo;

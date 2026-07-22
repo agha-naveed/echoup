@@ -4,6 +4,8 @@ import { GoPlus } from "react-icons/go";
 import { HiOutlineDotsHorizontal } from "react-icons/hi";
 import { createClient } from "@/utils/supabase/client";
 import { toggleFollowState } from "@/actions/follow";
+import { useUser } from "../context/UserContext";
+import EditProfileModal from "./modals/EditProfileModal";
 
 type ProfileHeaderProps = {
     profile: any;
@@ -26,6 +28,10 @@ export default function ProfileHeader({
     const [isFollowing, setIsFollowing] = useState(initialIsFollowing);
     const [followersCount, setFollowersCount] = useState(initialFollowersCount);
     const [isProcessing, setIsProcessing] = useState(false);
+
+    
+    const { user: currentUser } = useUser();
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
     const isOwnProfile = currentUserId === profile.id;
     const fullName = `${profile.first_name} ${profile.last_name || ""}`.trim();
@@ -102,9 +108,18 @@ export default function ProfileHeader({
                             <span className="font-medium">{isFollowing ? "Following" : "Follow"}</span>
                         </button>
                     ) : (
-                        <button className="bg-dark-clr border border-main-border text-foreground hover:bg-light-clr outline-none flex items-center gap-1 px-4 py-2 rounded-lg font-medium transition-all">
-                            Edit Profile
-                        </button>
+                        <div>
+                            <button onClick={() => setIsEditModalOpen(true)} className="bg-dark-clr border border-main-border text-foreground hover:bg-light-clr outline-none flex items-center gap-1 px-4 py-2 rounded-lg font-medium transition-all">
+                                Edit Profile
+                            </button>
+                            {currentUser && (
+                                <EditProfileModal 
+                                    isOpen={isEditModalOpen} 
+                                    onClose={() => setIsEditModalOpen(false)} 
+                                    currentUser={currentUser} 
+                                />
+                            )}
+                        </div>
                     )}
                 </div>
             </div>

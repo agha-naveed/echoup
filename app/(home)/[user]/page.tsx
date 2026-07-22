@@ -2,9 +2,10 @@ import FeedPage from "@/components/Feed";
 import Image from "next/image"
 import { createClient } from "@/utils/supabase/server";
 import { notFound } from "next/navigation";
-import ProfileHeader from "@/components/ProfileHeader"; // Import your new component
+import ProfileHeader from "@/components/ProfileHeader";
 
 const UserProfilePage = async ({ params }: { params: Promise<{ user: string }> }) => {
+
     const resolvedParams = await params; 
     
     let rawUsername = decodeURIComponent(resolvedParams.user);

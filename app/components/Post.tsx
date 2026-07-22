@@ -153,29 +153,36 @@ export default function Post({ post }: Props) {
     }, []);
 
 
-    // ==========================================
-    // NEW: SYNC LIKES FROM MODAL
+   // ==========================================
+    // SYNC LIKES FROM MODAL
     // ==========================================
     useEffect(() => {
         const handleSyncLike = (event: any) => {
             // 1. Check if the event is for THIS specific post
             if (event.detail.postId === post.id) {
-                const { isLiked: newIsLiked, photoIndex } = event.detail;
+                const { isLiked: newIsLiked } = event.detail; // Ignore photoIndex from modal
                 
-                // 2. Update the local likes array to match the modal's action
+                // 2. Update the local likes array
                 setLikes((prev: any[]) => {
                     if (newIsLiked) {
-                        // Add the like to the state
+                        // Prevent duplicates just in case
+                        const alreadyLiked = prev.some(l => 
+                            (l.userId === currentUser?.user?.id || l.user_id === currentUser?.user?.id) && 
+                            (l.photoIndex === null || l.photo_index === null)
+                        );
+                        if (alreadyLiked) return prev;
+
+                        // Force photo_index to be NULL so Post.tsx recognizes it!
                         return [...prev, { 
                             id: `sync-like-${Date.now()}`, 
                             user_id: currentUser?.user?.id, 
-                            photo_index: photoIndex 
+                            photo_index: null 
                         }];
                     } else {
-                        // Remove the like from the state
+                        // Remove the null index like
                         return prev.filter(l => !(
                             (l.userId === currentUser?.user?.id || l.user_id === currentUser?.user?.id) && 
-                            (l.photoIndex === photoIndex || l.photo_index === photoIndex)
+                            (l.photoIndex === null || l.photo_index === null)
                         ));
                     }
                 });
@@ -185,7 +192,6 @@ export default function Post({ post }: Props) {
         window.addEventListener('postLikeToggled', handleSyncLike);
         return () => window.removeEventListener('postLikeToggled', handleSyncLike);
     }, [post.id, currentUser]);
-    
     // ==========================================
 
     const ImageTile = ({ src, alt, width = 600, height = 600, idx, cHeight }: any) => (

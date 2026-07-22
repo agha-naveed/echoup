@@ -8,12 +8,12 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { createClient } from "@/utils/supabase/client";
+import { useUser } from "../context/UserContext";
 
 const CreatePost = () => {
     const router = useRouter();
     const supabase = createClient();
-
-    const [currentUser, setCurrentUser] = useState<any>(null);
+    const { user: currentUser } = useUser();
 
     const [isFocus, setIsFocus] = useState(false);
     const [isEmpty, setIsEmpty] = useState(true);
@@ -34,20 +34,21 @@ const CreatePost = () => {
     const videoInputRef = useRef<HTMLInputElement>(null); // NEW: Ref for video input
     const containerRef = useRef<HTMLDivElement>(null);
     
-    useEffect(() => {
-        const fetchUser = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                const { data: profile } = await supabase
-                    .from("users")
-                    .select("*")
-                    .eq("id", user.id)
-                    .single();
-                setCurrentUser(profile);
-            }
-        };
-        fetchUser();
-    }, [supabase]);
+    
+    // useEffect(() => {
+    //     const fetchUser = async () => {
+    //         const { data: { user } } = await supabase.auth.getUser();
+    //         if (user) {
+    //             const { data: profile } = await supabase
+    //                 .from("users")
+    //                 .select("*")
+    //                 .eq("id", user.id)
+    //                 .single();
+    //             setCurrentUser(profile);
+    //         }
+    //     };
+    //     fetchUser();
+    // }, [supabase]);
 
     const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
         const text = e.currentTarget.textContent?.trim() || "";
