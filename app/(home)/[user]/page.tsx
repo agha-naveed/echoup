@@ -82,8 +82,17 @@ const UserProfilePage = async ({ params }: { params: Promise<{ user: string }> }
     return (
         <div className="min-h-screen container mx-auto w-full">
             <div className="relative">
-                <div className="w-full flex max-w-[1500px] sm:h-[270px] h-[37vw] object-cover rounded-xl overflow-hidden bg-dark-clr">
-                    <Image src={profile.cover_image} width={1000} height={1000} alt="Cover Page" className="w-full object-cover" />
+                <div className="w-full flex max-w-[1500px] sm:h-[270px] h-[37vw] object-cover rounded-xl overflow-hidden bg-[silver]/20">
+
+                    {
+                        profile.cover_image ?
+                        <Image src={profile.cover_image} width={1000} height={1000} alt="Cover Page" className="w-full object-cover" /> :
+                        <div className="flex flex-col select-none pointer-events-none justify-center items-center w-full">
+                            <span className="text-6xl text-gray-500/20 font-bold">EchoUp</span>
+                            <span className="tracking-[0.25rem] font-semibold text-[14px] text-gray-500/40 uppercase mr-7.5">No Cover Photo</span>
+                        </div>
+                    }
+
                 </div>
                 <div className="absolute sm:max-w-[180px] sm:min-w-[180px] sm:w-[180px] sm:min-h-[180px] sm:max-h-[180px] sm:h-[180px] min-w-[100px] w-[30vmin] min-h-[100px] h-[30vmin] overflow-hidden rounded-full sm:outline-7 outline-4 outline-light-clr -bottom-4 sm:left-12 left-9 bg-primary">
                     <Image src={profileImageUrl} width={360} height={480} alt={`${fullName}'s Profile Picture`} className="w-full h-full object-cover" />

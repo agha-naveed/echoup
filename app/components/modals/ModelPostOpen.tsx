@@ -38,7 +38,6 @@ export default function ModelPostOpen({ initialPost, query }: { initialPost: any
     //     fetchUser();
     // }, [supabase]);
 
-    console.log(initialPost)
     const photoQuery = query.photo;
     const initialIndex = photoQuery ? +photoQuery - 1 : 0;
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
