@@ -21,7 +21,7 @@ function SignupForm() {
     const [step, setStep] = useState(1);
     const [preview, setPreview] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [authUser, setAuthUser] = useState<any>(null); // Replaces NextAuth session
+    const [authUser, setAuthUser] = useState<any>(null);
     
     const searchParams = useSearchParams();
     const router = useRouter();

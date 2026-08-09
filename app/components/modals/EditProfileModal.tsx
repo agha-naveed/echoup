@@ -26,7 +26,7 @@ export default function EditProfileModal({ isOpen, onClose, currentUser }: EditP
 
     // Image & Preview States
     const [profileFile, setProfileFile] = useState<File | null>(null);
-    const [profilePreview, setProfilePreview] = useState("https://res.cloudinary.com/dpc7k1bpc/image/upload/v1780117269/bg4gqb8vbxlssuaputax.png");
+    const [profilePreview, setProfilePreview] = useState(currentUser?.profile_image || "");
     
     const [coverFile, setCoverFile] = useState<File | null>(null);
     const [coverPreview, setCoverPreview] = useState(currentUser?.cover_image || "");
@@ -149,7 +149,7 @@ export default function EditProfileModal({ isOpen, onClose, currentUser }: EditP
                     <div className="relative px-5 pb-4">
                         <div className="relative -top-12 w-24 h-24 rounded-full border-4 border-primary bg-dark-clr overflow-hidden group">
                             {profilePreview ? (
-                                <Image src={profilePreview} alt="Profile" layout="fill" objectFit="cover" />
+                                <Image src={profilePreview} alt="Profile" width={200} height={200} placeholder="blur" blurDataURL={profilePreview} />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center bg-main-blue text-white text-3xl font-bold">
                                     {firstName.charAt(0)}

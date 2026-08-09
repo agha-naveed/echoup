@@ -83,7 +83,7 @@ const UserProfilePage = async ({ params }: { params: Promise<{ user: string }> }
         <div className="min-h-screen container mx-auto w-full">
             <div className="relative">
                 <div className="w-full flex max-w-[1500px] sm:h-[270px] h-[37vw] object-cover rounded-xl overflow-hidden bg-dark-clr">
-                    <Image src={"https://static.vecteezy.com/system/resources/thumbnails/033/252/051/small/space-for-text-on-textured-background-surrounded-by-a-lion-in-watercolor-style-background-image-ai-generated-photo.jpg"} width={1000} height={1000} alt="Cover Page" className="w-full object-cover" />
+                    <Image src={profile.cover_image} width={1000} height={1000} alt="Cover Page" className="w-full object-cover" />
                 </div>
                 <div className="absolute sm:max-w-[180px] sm:min-w-[180px] sm:w-[180px] sm:min-h-[180px] sm:max-h-[180px] sm:h-[180px] min-w-[100px] w-[30vmin] min-h-[100px] h-[30vmin] overflow-hidden rounded-full sm:outline-7 outline-4 outline-light-clr -bottom-4 sm:left-12 left-9 bg-primary">
                     <Image src={profileImageUrl} width={360} height={480} alt={`${fullName}'s Profile Picture`} className="w-full h-full object-cover" />

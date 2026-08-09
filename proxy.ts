@@ -44,7 +44,7 @@ export async function proxy(request: NextRequest) {
 
     // If logged in and on the login page, skip to feed
     if (user && pathname === "/account") {
-        return NextResponse.redirect(new URL('/post', request.url));
+        return NextResponse.redirect(new URL('/', request.url));
     }
 
     return supabaseResponse;
