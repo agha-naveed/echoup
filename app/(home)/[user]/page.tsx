@@ -39,7 +39,7 @@ const UserProfilePage = async ({ params }: { params: Promise<{ user: string }> }
             image_url,
             created_at,
             author:users ( id, username, first_name, last_name, profile_image ),
-            likes ( id ),
+            likes:likes ( id, user_id ),
             comments (
                 id,
                 content,

@@ -17,7 +17,7 @@ type Props = {
 }
 
 export default function Post({ post }: Props) {
-    const supabase = createClient();
+    // const supabase = createClient();
     const [currentUser, setCurrentUser] = useState<any>(null);
 
     const [limitError, setLimitError] = useState({
@@ -29,6 +29,8 @@ export default function Post({ post }: Props) {
     useEffect(() => {
         setCurrentUser(user)
     }, [user])
+    console.log(user)
+    console.log(post)
 
     const images = post.image_url || [];
     const videoUrl = post.video_url || null;
@@ -54,9 +56,10 @@ export default function Post({ post }: Props) {
 
     const visibleComments = generalComments.slice(0, visibleCount);
 
-    const generalLikes = likes.filter((l: any) => l.photoIndex === null || l.photo_index === null);
-    const isLiked = generalLikes.some((l: any) => l.userId === currentUser?.user?.id || l.user_id === currentUser?.user?.id);
-
+    // const generalLikes = likes.filter((l: any) => l.photoIndex === null || l.photo_index === null);
+    
+    const isLiked = post.likes.some((l: any) => l.user_id === currentUser?.user?.id || l.user_id === currentUser?.user?.id);
+    
     const totalLikes = likes.length;
     const totalComments = comments.length;
     const totalShares = post?.shares?.length || 0;
@@ -77,7 +80,7 @@ export default function Post({ post }: Props) {
 
         // 1. Optimistic Update
         if (wasLiked) {
-            setLikes(prev => prev.filter(l => !((l.userId === currentUser?.user.id || l.user_id === currentUser?.user.id) && (l.photoIndex === null || l.photo_index === null))));
+            setLikes(prev => prev.filter(l => !((l.user_id === currentUser?.user.id) && (l.photoIndex === null || l.photo_index === null))));
         } else {
             setLikes(prev => [...prev, { id: `temp-like-${Date.now()}`, user_id: currentUser?.user.id, photo_index: null }]);
             
