@@ -1,22 +1,27 @@
-"use client"
-import React from 'react'
+
 import Navbar from '../Navbar';
 import SideNavbar from '../SideNavbar';
 import ActivitySidebar from "../ActivitySidebar";
-import { usePathname } from 'next/navigation';
+// import { usePathname } from 'next/navigation';
 import { UserProvider } from '@/app/context/UserContext';
+import { getCurrentUser } from '@/utils/getCurrentUser';
 
-export default function MainWrapper({
+export default async function MainWrapper({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const pathname = usePathname();
-  const isReelsPage = pathname.startsWith('/reels');
+  // const pathname = usePathname();
+  // const isReelsPage = pathname.startsWith('/reels');
+
+  const user = await getCurrentUser();
+
+  const isReelsPage = false;
+  
   return (
     <>
       <div>
-        <UserProvider>
+        <UserProvider initialUser={user}>
           <Navbar />
           <div className='flex justify-between'>
             <SideNavbar />

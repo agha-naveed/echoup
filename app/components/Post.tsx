@@ -6,7 +6,6 @@ import { HiOutlineDotsHorizontal } from "react-icons/hi";
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 import { formatDistanceToNowStrict } from 'date-fns';
-import { createClient } from '@/utils/supabase/client';
 import { toggleLikeState } from '@/actions/like';
 import { submitComment } from '@/actions/comment';
 import Video from './CustomVideoPlayer';
