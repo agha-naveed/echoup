@@ -24,7 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Upgraded Connection Manager (Multi-Device Support)
+# Connection Manager (Multi-Device Support)
 class ConnectionManager:
     def __init__(self):
         # Maps user_id -> a LIST of their active WebSocket connections
@@ -39,7 +39,8 @@ class ConnectionManager:
 
     def disconnect(self, websocket: WebSocket, user_id: str):
         if user_id in self.active_connections:
-            self.active_connections[user_id].remove(websocket)
+            if websocket in self.active_connections[user_id]:
+                self.active_connections[user_id].remove(websocket)
             if len(self.active_connections[user_id]) == 0:
                 del self.active_connections[user_id]
             print(f"User {user_id} disconnected.")
@@ -56,17 +57,17 @@ manager = ConnectionManager()
 def save_message_to_db(message_data: dict):
     return supabase.table("messages").insert(message_data).execute()
 
-# 3. The WebSocket Endpoint
+# The WebSocket Endpoint
 @app.websocket("/ws/chat/{user_id}/{friend_id}")
 async def chat_endpoint(websocket: WebSocket, user_id: str, friend_id: str):
     await manager.connect(websocket, user_id)
-    
+
     try:
         while True:
             # A. Wait for a message from the React frontend
             data = await websocket.receive_text()
             message_data = json.loads(data)
-            
+
             # B. Format the data for Supabase
             new_db_message = {
                 "sender_id": user_id,
@@ -89,15 +90,20 @@ async def chat_endpoint(websocket: WebSocket, user_id: str, friend_id: str):
             # E. Route the live message to the friend's ChatBox
             await manager.send_personal_message(frontend_payload, friend_id)
 
-
-            # await manager.send_personal_message(frontend_payload, friend_id)
-                        
-                        # Add this line to bounce it back to the sender!
-                        # This will force your React 'onmessage' to fire and print "open"
+            # F. Bounce it back to the sender too, so every open tab/device
+            # of the sender's own account also gets the confirmed message
+            # (with the real DB id/timestamp instead of the optimistic one).
             await manager.send_personal_message(frontend_payload, user_id)
-            
+
     except WebSocketDisconnect:
         manager.disconnect(websocket, user_id)
     except Exception as e:
         print(f"Error: {e}")
         manager.disconnect(websocket, user_id)
+
+
+# Simple health check — useful to confirm the server is actually reachable
+# from the browser (separate from whether the WebSocket itself connects).
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}

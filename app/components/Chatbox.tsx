@@ -1,6 +1,6 @@
 "use client"
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IoIosArrowDown, IoMdClose } from "react-icons/io";
 import { RiSendPlaneFill } from "react-icons/ri";
 import { format } from "date-fns";
@@ -20,29 +20,54 @@ type ChatBoxProps = {
     onClose: () => void;
 };
 
+const PAGE_SIZE = 10;
+// Trigger loading older messages once the user scrolls within this many
+// px of the top of the list.
+const NEAR_TOP_THRESHOLD = 60;
+
 export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState("");
     const [minimized, setMinimized] = useState(false);
 
-    // FIX: memoize the Supabase client so it's created ONCE per mount, not
-    // on every render. If this were recreated every render and included in
-    // the fetchHistory effect's dependency array, that effect would re-fire
-    // on every re-render (e.g. every time a WS message arrives), repeatedly
-    // flipping isLoadingHistory back to true and getting stuck.
+    // Memoized so it's created ONCE per mount, not on every render.
     const supabase = useMemo(() => createClient(), []);
 
     const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
 
-    // State to ensure we only use Portals on the client side
     const [mounted, setMounted] = useState(false);
 
     const ws = useRef<WebSocket | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+    // Tracks the id of the last message so we only auto-scroll to bottom
+    // when something is appended at the END (new send/receive) — not when
+    // older messages are prepended at the start (load-more).
+    const lastMessageIdRef = useRef<string | null>(null);
+    const hasMoreRef = useRef(hasMore);
+    const isLoadingMoreRef = useRef(isLoadingMore);
+
+    useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
+    useEffect(() => { isLoadingMoreRef.current = isLoadingMore; }, [isLoadingMore]);
 
     const friendFullName = `${friend.first_name} ${friend.last_name || ""}`.trim();
 
-    // Mark as mounted on client to prevent SSR errors
+    const conversationFilter = useMemo(
+        () =>
+            `and(sender_id.eq.${currentUser.id},receiver_id.eq.${friend.id}),and(sender_id.eq.${friend.id},receiver_id.eq.${currentUser.id})`,
+        [currentUser.id, friend.id]
+    );
+
+    const formatRow = (msg: any): Message => ({
+        id: msg.id,
+        senderId: msg.sender_id,
+        text: msg.text,
+        timestamp: msg.created_at
+    });
+
     useEffect(() => {
         setMounted(true);
     }, []);
@@ -53,9 +78,8 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
     useEffect(() => {
         let isMounted = true;
 
-        // Wait 50ms to let React Strict Mode finish its double-mount cycle
         const timeoutId = setTimeout(() => {
-            if (!isMounted) return; // If React unmounted us during the 50ms, do nothing!
+            if (!isMounted) return;
 
             const socketUrl = `ws://127.0.0.1:8000/ws/chat/${currentUser.id}/${friend.id}`;
             ws.current = new WebSocket(socketUrl);
@@ -65,8 +89,6 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
             ws.current.onmessage = (event) => {
                 const incomingData = JSON.parse(event.data);
                 setMessages((prev) => {
-                    // Avoid duplicates if the server echoes back a message
-                    // we already added optimistically on send.
                     if (prev.some((m) => m.id === incomingData.id)) return prev;
                     return [...prev, incomingData];
                 });
@@ -76,11 +98,8 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
         }, 50);
 
         return () => {
-            // Tell the timeout to abort if we unmount
             isMounted = false;
             clearTimeout(timeoutId);
-
-            // Safely close the socket if it actually got created
             if (ws.current) {
                 ws.current.close();
             }
@@ -89,6 +108,13 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
 
     // ==========================================
     // SEND MESSAGE LOGIC
+    // FIX: no more optimistic local add here. The FastAPI backend saves
+    // the message to Supabase and bounces the confirmed row back to the
+    // SENDER over the same WebSocket (see main.py). Previously this
+    // function also added a local copy with a temp id, so when that
+    // server-confirmed copy arrived it didn't match the temp id and got
+    // added as a second bubble. Now the WS `onmessage` handler above is
+    // the single place messages get added, for both sender and receiver.
     // ==========================================
     const handleSendMessage = (e?: React.FormEvent) => {
         e?.preventDefault();
@@ -96,74 +122,61 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
         const text = inputValue.trim();
         if (!text || !ws.current || ws.current.readyState !== WebSocket.OPEN) return;
 
-        const newMessage = {
+        const outgoing = {
             id: `msg-${Date.now()}`,
             senderId: currentUser.id,
             text: text,
             timestamp: new Date().toISOString()
         };
 
-        ws.current.send(JSON.stringify(newMessage));
-        setMessages((prev) => [...prev, newMessage]);
+        ws.current.send(JSON.stringify(outgoing));
         setInputValue("");
     };
 
     // ==========================================
-    // FETCH CHAT HISTORY (Supabase REST API)
+    // FETCH INITIAL CHAT HISTORY — last PAGE_SIZE messages
     // ==========================================
     useEffect(() => {
         let isMounted = true;
 
         const fetchHistory = async () => {
-            console.log("FETCH HISTORY STARTED", { currentUserId: currentUser.id, friendId: friend.id });
             setIsLoadingHistory(true);
+            setHasMore(true);
 
             try {
                 const queryPromise = supabase
                     .from("messages")
                     .select("*")
-                    .or(
-                        `and(sender_id.eq.${currentUser.id},receiver_id.eq.${friend.id}),and(sender_id.eq.${friend.id},receiver_id.eq.${currentUser.id})`
-                    )
-                    .order("created_at", { ascending: true });
+                    .or(conversationFilter)
+                    .order("created_at", { ascending: false })
+                    .limit(PAGE_SIZE);
 
-                // Safety net: if the Supabase request hangs (bad env vars,
-                // network/CORS issue, RLS misconfig, etc.) this guarantees
-                // we don't get stuck on "Loading messages..." forever.
+                // Safety net so a hung request can't leave the spinner
+                // stuck forever.
                 const timeoutPromise = new Promise((_, reject) =>
                     setTimeout(() => reject(new Error("Supabase history fetch timed out after 8s")), 8000)
                 );
 
                 const { data, error }: any = await Promise.race([queryPromise, timeoutPromise]);
 
-                console.log("SUPABASE RESPONSE DATA:", data);
-                console.log("SUPABASE RESPONSE ERROR:", error);
-
-                if (error) {
-                    console.error("Supabase Database Error:", error.message ?? error);
-                    throw error;
-                }
+                if (error) throw error;
 
                 if (isMounted && data) {
-                    console.log(`Formatting ${data.length} messages`);
-                    const formattedMessages = data.map((msg: any) => ({
-                        id: msg.id,
-                        senderId: msg.sender_id,
-                        text: msg.text,
-                        timestamp: msg.created_at
-                    }));
+                    // Rows come back newest-first; reverse to oldest-first for display.
+                    const formatted = data.map(formatRow).reverse();
 
                     setMessages((prev) => {
                         const existingIds = new Set(prev.map((p) => p.id));
-                        const newHistory = formattedMessages.filter((m: any) => !existingIds.has(m.id));
-                        return [...newHistory, ...prev];
+                        const merged = formatted.filter((m: Message) => !existingIds.has(m.id));
+                        return [...merged, ...prev];
                     });
+
+                    setHasMore(data.length === PAGE_SIZE);
                 }
             } catch (err: any) {
                 console.error("Failed to load history:", err);
             } finally {
                 if (isMounted) {
-                    console.log("TURNING OFF LOADING HISTORY");
                     setIsLoadingHistory(false);
                 }
             }
@@ -178,7 +191,87 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
         return () => {
             isMounted = false;
         };
-    }, [currentUser.id, friend.id, supabase]);
+    }, [currentUser.id, friend.id, supabase, conversationFilter]);
+
+    // ==========================================
+    // LOAD MORE (older) MESSAGES — triggered on scroll-to-top
+    // Fetches the next PAGE_SIZE messages older than the oldest one
+    // currently loaded, prepends them, and preserves scroll position
+    // so the view doesn't jump.
+    // ==========================================
+    const loadMoreMessages = useCallback(async () => {
+        if (isLoadingMoreRef.current || !hasMoreRef.current || messages.length === 0) return;
+
+        const oldest = messages[0];
+        const container = messagesContainerRef.current;
+        const prevScrollHeight = container?.scrollHeight ?? 0;
+        const prevScrollTop = container?.scrollTop ?? 0;
+
+        setIsLoadingMore(true);
+
+        try {
+            const { data, error } = await supabase
+                .from("messages")
+                .select("*")
+                .or(conversationFilter)
+                .lt("created_at", oldest.timestamp)
+                .order("created_at", { ascending: false })
+                .limit(PAGE_SIZE);
+
+            if (error) throw error;
+
+            if (data && data.length > 0) {
+                const formatted = data.map(formatRow).reverse();
+
+                setMessages((prev) => {
+                    const existingIds = new Set(prev.map((p) => p.id));
+                    const merged = formatted.filter((m: Message) => !existingIds.has(m.id));
+                    return [...merged, ...prev];
+                });
+
+                // Restore scroll position after the DOM grows upward, so
+                // the messages the user was looking at stay in place
+                // instead of the view jumping to the top.
+                requestAnimationFrame(() => {
+                    if (container) {
+                        const newScrollHeight = container.scrollHeight;
+                        container.scrollTop = newScrollHeight - prevScrollHeight + prevScrollTop;
+                    }
+                });
+            }
+
+            setHasMore(data ? data.length === PAGE_SIZE : false);
+        } catch (err: any) {
+            console.error("Failed to load more messages:", err);
+        } finally {
+            setIsLoadingMore(false);
+        }
+    }, [messages, supabase, conversationFilter]);
+
+    const handleScroll = () => {
+        const container = messagesContainerRef.current;
+        if (!container) return;
+
+        if (container.scrollTop <= NEAR_TOP_THRESHOLD) {
+            loadMoreMessages();
+        }
+    };
+
+    // ==========================================
+    // AUTO-SCROLL TO BOTTOM
+    // Only fires when a message is appended at the END (initial load,
+    // sent message, or a live incoming message) — never when older
+    // messages are prepended at the start via loadMoreMessages.
+    // ==========================================
+    useEffect(() => {
+        if (messages.length === 0) return;
+
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg.id !== lastMessageIdRef.current) {
+            lastMessageIdRef.current = lastMsg.id;
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }
+    }, [messages]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === "Enter") {
@@ -187,7 +280,6 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
         }
     };
 
-    // Prevent rendering until the client has loaded (required for createPortal)
     if (!mounted) return null;
 
     return createPortal(
@@ -221,7 +313,11 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
             </div>
 
             {/* MESSAGES AREA */}
-            <div className={`${minimized ? "hidden" : "flex"} flex-1 p-4 overflow-y-auto custom-scroll flex-col gap-3 bg-primary/50`}>
+            <div
+                ref={messagesContainerRef}
+                onScroll={handleScroll}
+                className={`${minimized ? "hidden" : "flex"} flex-1 p-4 overflow-y-auto custom-scroll flex-col gap-3 bg-primary/50`}
+            >
                 {isLoadingHistory ? (
                     <div className="flex-1 flex items-center justify-center text-gray-500 text-sm animate-pulse">
                         Loading messages...
@@ -231,26 +327,38 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
                         Say hi to {friend.first_name}!
                     </div>
                 ) : (
-                    messages.map((msg) => {
-                        const isMe = msg.senderId === currentUser.id;
-
-                        return (
-                            <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-full`}>
-                                <div
-                                    className={`px-4 py-2 text-[14px] rounded-[18px] max-w-[85%] break-words ${
-                                        isMe
-                                        ? "bg-main-blue text-white rounded-br-sm"
-                                        : "bg-dark-clr text-foreground border border-main-border rounded-bl-sm"
-                                    }`}
-                                >
-                                    {msg.text}
-                                </div>
-                                <span className="text-[10px] text-gray-500 mt-1 px-1">
-                                    {format(new Date(msg.timestamp), "h:mm a")}
-                                </span>
+                    <>
+                        {isLoadingMore && (
+                            <div className="flex items-center justify-center text-gray-500 text-xs py-1 animate-pulse shrink-0">
+                                Loading older messages...
                             </div>
-                        );
-                    })
+                        )}
+                        {!hasMore && (
+                            <div className="flex items-center justify-center text-gray-600 text-[11px] py-1 shrink-0">
+                                Start of conversation
+                            </div>
+                        )}
+                        {messages.map((msg) => {
+                            const isMe = msg.senderId === currentUser.id;
+
+                            return (
+                                <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-full`}>
+                                    <div
+                                        className={`px-4 py-2 text-[14px] rounded-[18px] max-w-[85%] break-words ${
+                                            isMe
+                                            ? "bg-main-blue text-white rounded-br-sm"
+                                            : "bg-dark-clr text-foreground border border-main-border rounded-bl-sm"
+                                        }`}
+                                    >
+                                        {msg.text}
+                                    </div>
+                                    <span className="text-[10px] text-gray-500 mt-1 px-1">
+                                        {format(new Date(msg.timestamp), "h:mm a")}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </>
                 )}
                 {/* Auto-scroll anchor */}
                 <div ref={messagesEndRef} />
