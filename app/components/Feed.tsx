@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Post from "../components/Post";
+import Post from "./post/Post";
 
 export default function FeedPage({ initialPosts }: { initialPosts: any[] }) {
 

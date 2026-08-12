@@ -8,8 +8,8 @@ import { useState, useRef, useEffect } from 'react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { toggleLikeState } from '@/actions/like';
 import { submitComment } from '@/actions/comment';
-import Video from './CustomVideoPlayer';
-import { useUser } from '../context/UserContext';
+import Video from '../CustomVideoPlayer';
+import { useUser } from '../../context/UserContext';
 
 type Props = {
     post: any
@@ -18,18 +18,37 @@ type Props = {
 export default function Post({ post }: Props) {
     // const supabase = createClient();
     const [currentUser, setCurrentUser] = useState<any>(null);
-
+    
     const [limitError, setLimitError] = useState({
         comment: false,
         like: false
     })
     const user = useUser()
-
+    
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+    
+    
     useEffect(() => {
         setCurrentUser(user)
     }, [user])
-    console.log(user)
-    console.log(post)
+    
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setIsMenuOpen(false);
+            }
+        };
+        if (isMenuOpen) {
+            document.addEventListener("mousedown", handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [isMenuOpen]);
+
+    const isMyPost = user?.user?.id === post.author?.id;
 
     const images = post.image_url || [];
     const videoUrl = post.video_url || null;
@@ -231,7 +250,51 @@ export default function Post({ post }: Props) {
                         {createdAt && <span suppressHydrationWarning className='text-[12px] text-foreground/70'>{new Date(createdAt).toString().substring(4, 15)}</span>}
                     </div>
                 </div>
-                <HiOutlineDotsHorizontal className='text-[22px] p-1.5 cursor-pointer w-9 h-9 transition-all hover:bg-dark-clr rounded-full text-foreground' />
+                <div className="relative" ref={menuRef}>
+                    <HiOutlineDotsHorizontal 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setIsMenuOpen(!isMenuOpen);
+                        }}
+                        className={`text-[22px] p-1.5 cursor-pointer w-9 h-9 transition-all hover:bg-dark-clr rounded-full ${isMenuOpen ? 'bg-dark-clr text-white' : 'text-foreground'}`} 
+                    />
+
+                    {isMenuOpen && (
+                        <div className="absolute top-[80%] right-0 mt-2 w-40 bg-dark-clr border border-main-border rounded-xl shadow-lg z-50 overflow-hidden">
+                            <ul className="flex flex-col text-[14px] text-foreground font-medium">
+                                {isMyPost ? (
+                                    <>
+                                        <li>
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); console.log("Edit Post"); setIsMenuOpen(false); }}
+                                                className="w-full text-left px-4 py-3 hover:bg-white/5 transition-colors cursor-pointer"
+                                            >
+                                                Edit Post
+                                            </button>
+                                        </li>
+                                        <li className="border-t border-main-border">
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); console.log("Delete Post"); setIsMenuOpen(false); }}
+                                                className="w-full text-left px-4 py-3 text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                            >
+                                                Delete Post
+                                            </button>
+                                        </li>
+                                    </>
+                                ) : (
+                                    <li>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); console.log("Report Post"); setIsMenuOpen(false); }}
+                                            className="w-full text-left px-4 py-3 hover:bg-white/5 transition-colors cursor-pointer"
+                                        >
+                                            Report Post
+                                        </button>
+                                    </li>
+                                )}
+                            </ul>
+                        </div>
+                    )}
+                </div>
             </div>
 
             <div className='flex flex-col gap-3'>

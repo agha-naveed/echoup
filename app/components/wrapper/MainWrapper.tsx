@@ -5,6 +5,7 @@ import ActivitySidebar from "../ActivitySidebar";
 import { UserProvider } from '@/app/context/UserContext';
 import { getCurrentUser } from '@/utils/getCurrentUser';
 import ContentWrapper from './ContentWrapper';
+import { redirect } from 'next/navigation';
 
 export default async function MainWrapper({
   children,
@@ -14,8 +15,10 @@ export default async function MainWrapper({
 
   const user = await getCurrentUser();
 
-  const isReelsPage = false;
-  
+  if (!user) {
+    redirect("/login"); 
+  }
+
   return (
     <>
       <div>
