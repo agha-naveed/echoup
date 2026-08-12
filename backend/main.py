@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +16,6 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = FastAPI()
 
-# Allow your Next.js app to communicate with FastAPI
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "https://echoup.vercel.app"],
@@ -24,28 +24,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Connection Manager to track active users
+# 2. Upgraded Connection Manager (Multi-Device Support)
 class ConnectionManager:
     def __init__(self):
-        # Maps user_id -> their active WebSocket connection
-        self.active_connections: dict[str, WebSocket] = {}
+        # Maps user_id -> a LIST of their active WebSocket connections
+        self.active_connections: dict[str, list[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, user_id: str):
         await websocket.accept()
-        self.active_connections[user_id] = websocket
-        print(f"User {user_id} connected.")
+        if user_id not in self.active_connections:
+            self.active_connections[user_id] = []
+        self.active_connections[user_id].append(websocket)
+        print(f"User {user_id} connected. Active devices: {len(self.active_connections[user_id])}")
 
-    def disconnect(self, user_id: str):
+    def disconnect(self, websocket: WebSocket, user_id: str):
         if user_id in self.active_connections:
-            del self.active_connections[user_id]
+            self.active_connections[user_id].remove(websocket)
+            if len(self.active_connections[user_id]) == 0:
+                del self.active_connections[user_id]
             print(f"User {user_id} disconnected.")
 
     async def send_personal_message(self, message: dict, user_id: str):
-        # If the friend is currently online, send the message to their browser!
+        # Send the message to EVERY tab/device the user currently has open
         if user_id in self.active_connections:
-            await self.active_connections[user_id].send_json(message)
+            for connection in self.active_connections[user_id]:
+                await connection.send_json(message)
 
 manager = ConnectionManager()
+
+# Helper function to run Supabase inserts without blocking the server
+def save_message_to_db(message_data: dict):
+    return supabase.table("messages").insert(message_data).execute()
 
 # 3. The WebSocket Endpoint
 @app.websocket("/ws/chat/{user_id}/{friend_id}")
@@ -65,8 +74,8 @@ async def chat_endpoint(websocket: WebSocket, user_id: str, friend_id: str):
                 "text": message_data.get("text")
             }
 
-            # C. Save to the database
-            db_response = supabase.table("messages").insert(new_db_message).execute()
+            # C. Save to the database asynchronously (prevents freezing)
+            db_response = await asyncio.to_thread(save_message_to_db, new_db_message)
             saved_message = db_response.data[0]
 
             # D. Format the exact payload your Next.js ChatBox is expecting
@@ -79,9 +88,16 @@ async def chat_endpoint(websocket: WebSocket, user_id: str, friend_id: str):
 
             # E. Route the live message to the friend's ChatBox
             await manager.send_personal_message(frontend_payload, friend_id)
+
+
+            # await manager.send_personal_message(frontend_payload, friend_id)
+                        
+                        # Add this line to bounce it back to the sender!
+                        # This will force your React 'onmessage' to fire and print "open"
+            await manager.send_personal_message(frontend_payload, user_id)
             
     except WebSocketDisconnect:
-        manager.disconnect(user_id)
+        manager.disconnect(websocket, user_id)
     except Exception as e:
         print(f"Error: {e}")
-        manager.disconnect(user_id)
+        manager.disconnect(websocket, user_id)

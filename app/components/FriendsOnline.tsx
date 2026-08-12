@@ -5,6 +5,7 @@ import { createClient } from "@/utils/supabase/client"
 import ChatBox from "./Chatbox"
 import { IoMdClose } from "react-icons/io"
 import { RiMessage3Fill } from "react-icons/ri"
+import { useUser } from "../context/UserContext"
 
 export default function FriendsOnline({ isMobile = false }: { isMobile?: boolean }) {
     const [friends, setFriends] = useState<any[]>([]);
@@ -24,21 +25,24 @@ export default function FriendsOnline({ isMobile = false }: { isMobile?: boolean
         activeChatRef.current = activeChat;
     }, [activeChat]);
 
+    const { user } = useUser();
+
+
     useEffect(() => {
         const fetchData = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
+            // const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
                 setIsLoading(false);
                 return;
             }
 
-            const { data: profile } = await supabase
-                .from("users")
-                .select("id, first_name, profile_image")
-                .eq("id", user.id)
-                .single();
+            // const { data: profile } = await supabase
+            //     .from("users")
+            //     .select("id, first_name, profile_image")
+            //     .eq("id", user.id)
+            //     .single();
                 
-            if (profile) setCurrentUser(profile);
+            if (user) setCurrentUser(user);
 
             const { data } = await supabase
                 .from("follows")

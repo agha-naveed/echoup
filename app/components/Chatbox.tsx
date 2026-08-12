@@ -1,10 +1,10 @@
 "use client"
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { IoIosArrowDown, IoMdClose } from "react-icons/io";
 import { RiSendPlaneFill } from "react-icons/ri";
 import { format } from "date-fns";
-import { createPortal } from "react-dom"; // <-- Import createPortal
+import { createPortal } from "react-dom";
 import { createClient } from "@/utils/supabase/client";
 
 type Message = {
@@ -25,12 +25,18 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
     const [inputValue, setInputValue] = useState("");
     const [minimized, setMinimized] = useState(false);
 
-    const supabase = createClient();
+    // FIX: memoize the Supabase client so it's created ONCE per mount, not
+    // on every render. If this were recreated every render and included in
+    // the fetchHistory effect's dependency array, that effect would re-fire
+    // on every re-render (e.g. every time a WS message arrives), repeatedly
+    // flipping isLoadingHistory back to true and getting stuck.
+    const supabase = useMemo(() => createClient(), []);
+
     const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-    
+
     // State to ensure we only use Portals on the client side
     const [mounted, setMounted] = useState(false);
-    
+
     const ws = useRef<WebSocket | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -42,41 +48,56 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
     }, []);
 
     // ==========================================
-    // WEBSOCKET CONNECTION
+    // WEBSOCKET CONNECTION (FastAPI backend)
     // ==========================================
     useEffect(() => {
-        const socketUrl = `ws://127.0.0.1:8000/ws/chat/${currentUser.id}/${friend.id}`;
-        ws.current = new WebSocket(socketUrl);
+        let isMounted = true;
 
-        ws.current.onopen = () => console.log(`Connected to chat with ${friend.username}`);
+        // Wait 50ms to let React Strict Mode finish its double-mount cycle
+        const timeoutId = setTimeout(() => {
+            if (!isMounted) return; // If React unmounted us during the 50ms, do nothing!
 
-        ws.current.onmessage = (event) => {
-            const incomingData = JSON.parse(event.data);
-            setMessages((prev) => [...prev, incomingData]);
-        };
+            const socketUrl = `ws://127.0.0.1:8000/ws/chat/${currentUser.id}/${friend.id}`;
+            ws.current = new WebSocket(socketUrl);
 
-        ws.current.onclose = () => console.log("Chat connection closed");
+            ws.current.onopen = () => console.log(`Connected to chat with ${friend.username}`);
+
+            ws.current.onmessage = (event) => {
+                const incomingData = JSON.parse(event.data);
+                setMessages((prev) => {
+                    // Avoid duplicates if the server echoes back a message
+                    // we already added optimistically on send.
+                    if (prev.some((m) => m.id === incomingData.id)) return prev;
+                    return [...prev, incomingData];
+                });
+            };
+
+            ws.current.onclose = () => console.log("Chat connection closed");
+        }, 50);
 
         return () => {
-            if (ws.current) ws.current.close();
+            // Tell the timeout to abort if we unmount
+            isMounted = false;
+            clearTimeout(timeoutId);
+
+            // Safely close the socket if it actually got created
+            if (ws.current) {
+                ws.current.close();
+            }
         };
     }, [currentUser.id, friend.id, friend.username]);
-
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
 
     // ==========================================
     // SEND MESSAGE LOGIC
     // ==========================================
     const handleSendMessage = (e?: React.FormEvent) => {
         e?.preventDefault();
-        
+
         const text = inputValue.trim();
         if (!text || !ws.current || ws.current.readyState !== WebSocket.OPEN) return;
 
         const newMessage = {
-            id: `msg-${Date.now()}`, 
+            id: `msg-${Date.now()}`,
             senderId: currentUser.id,
             text: text,
             timestamp: new Date().toISOString()
@@ -87,41 +108,76 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
         setInputValue("");
     };
 
-
     // ==========================================
-    // FETCH CHAT HISTORY (Supabase)
+    // FETCH CHAT HISTORY (Supabase REST API)
     // ==========================================
     useEffect(() => {
-        const fetchHistory = async () => {
-            const { data, error } = await supabase
-                .from("messages")
-                .select("*")
-                // Trick: Get messages where (sender is ME or receiver is ME) AND (sender is FRIEND or receiver is FRIEND)
-                .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
-                .or(`sender_id.eq.${friend.id},receiver_id.eq.${friend.id}`)
-                .order("created_at", { ascending: true }); // Ascending so the oldest is at the top!
+        let isMounted = true;
 
-            if (data) {
-                // Map the database columns to match your Message type
-                const formattedMessages = data.map((msg: any) => ({
-                    id: msg.id,
-                    senderId: msg.sender_id,
-                    text: msg.text,
-                    timestamp: msg.created_at
-                }));
-                
-                // If you already have some live messages, we merge them (history first, live messages second)
-                setMessages((prev) => {
-                    // Prevent duplicates if WebSocket pushed a message while history was loading
-                    const existingIds = new Set(prev.map(p => p.id));
-                    const newHistory = formattedMessages.filter((m:any) => !existingIds.has(m.id));
-                    return [...newHistory, ...prev];
-                });
+        const fetchHistory = async () => {
+            console.log("FETCH HISTORY STARTED", { currentUserId: currentUser.id, friendId: friend.id });
+            setIsLoadingHistory(true);
+
+            try {
+                const queryPromise = supabase
+                    .from("messages")
+                    .select("*")
+                    .or(
+                        `and(sender_id.eq.${currentUser.id},receiver_id.eq.${friend.id}),and(sender_id.eq.${friend.id},receiver_id.eq.${currentUser.id})`
+                    )
+                    .order("created_at", { ascending: true });
+
+                // Safety net: if the Supabase request hangs (bad env vars,
+                // network/CORS issue, RLS misconfig, etc.) this guarantees
+                // we don't get stuck on "Loading messages..." forever.
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error("Supabase history fetch timed out after 8s")), 8000)
+                );
+
+                const { data, error }: any = await Promise.race([queryPromise, timeoutPromise]);
+
+                console.log("SUPABASE RESPONSE DATA:", data);
+                console.log("SUPABASE RESPONSE ERROR:", error);
+
+                if (error) {
+                    console.error("Supabase Database Error:", error.message ?? error);
+                    throw error;
+                }
+
+                if (isMounted && data) {
+                    console.log(`Formatting ${data.length} messages`);
+                    const formattedMessages = data.map((msg: any) => ({
+                        id: msg.id,
+                        senderId: msg.sender_id,
+                        text: msg.text,
+                        timestamp: msg.created_at
+                    }));
+
+                    setMessages((prev) => {
+                        const existingIds = new Set(prev.map((p) => p.id));
+                        const newHistory = formattedMessages.filter((m: any) => !existingIds.has(m.id));
+                        return [...newHistory, ...prev];
+                    });
+                }
+            } catch (err: any) {
+                console.error("Failed to load history:", err);
+            } finally {
+                if (isMounted) {
+                    console.log("TURNING OFF LOADING HISTORY");
+                    setIsLoadingHistory(false);
+                }
             }
-            setIsLoadingHistory(false);
         };
 
-        fetchHistory();
+        if (currentUser?.id && friend?.id) {
+            fetchHistory();
+        } else {
+            setIsLoadingHistory(false);
+        }
+
+        return () => {
+            isMounted = false;
+        };
     }, [currentUser.id, friend.id, supabase]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -134,11 +190,9 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
     // Prevent rendering until the client has loaded (required for createPortal)
     if (!mounted) return null;
 
-    // THE FIX: Wrap the entire return inside createPortal()
     return createPortal(
-        // Responsive Layout: Full width on mobile, 350px on desktop. Fixed positioning!
         <div className={`fixed bottom-0 right-0 sm:right-4 lg:right-[370px] w-full sm:w-[350px] ${minimized ? "h-fit" : "h-[65vh] sm:h-[450px]"} bg-primary border-t sm:border border-main-border sm:rounded-t-xl rounded-t-xl shadow-2xl flex flex-col z-[100] overflow-hidden transition-all duration-300`}>
-            
+
             {/* HEADER */}
             <div className="flex items-center justify-between px-4 py-3 bg-dark-clr border-b border-main-border shrink-0 cursor-pointer" onClick={() => setMinimized(!minimized)}>
                 <div className="flex relative items-center gap-3">
@@ -182,10 +236,10 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
 
                         return (
                             <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-full`}>
-                                <div 
+                                <div
                                     className={`px-4 py-2 text-[14px] rounded-[18px] max-w-[85%] break-words ${
-                                        isMe 
-                                        ? "bg-main-blue text-white rounded-br-sm" 
+                                        isMe
+                                        ? "bg-main-blue text-white rounded-br-sm"
                                         : "bg-dark-clr text-foreground border border-main-border rounded-bl-sm"
                                     }`}
                                 >
@@ -214,8 +268,8 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
                         className="flex-1 bg-transparent border-none outline-none text-foreground text-[14px] placeholder:text-gray-500 px-2"
                         autoFocus
                     />
-                    <button 
-                        type="submit" 
+                    <button
+                        type="submit"
                         disabled={!inputValue.trim()}
                         className={`p-1.5 rounded-full transition-colors ${
                             inputValue.trim() ? "text-main-blue hover:bg-main-blue/10 cursor-pointer" : "text-gray-600 cursor-default"
@@ -226,6 +280,6 @@ export default function ChatBox({ currentUser, friend, onClose }: ChatBoxProps) 
                 </form>
             </div>
         </div>,
-        document.body // Teleports the component directly into the body tag!
+        document.body
     );
 }
