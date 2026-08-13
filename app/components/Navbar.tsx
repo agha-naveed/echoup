@@ -185,7 +185,7 @@ export default function Navbar() {
     };
 
     return (
-        <div className="flex text-foreground fixed top-0 w-full border-b border-b-main-border shadow-[0_10px_15px_#1112167e] z-20">
+        <div className="flex z-999999 text-foreground fixed top-0 w-full border-b border-b-main-border shadow-[0_10px_15px_#1112167e]">
             <Link href={"/"} className="bg-dark-clr min-w-[75px] grid place-content-center text-3xl border-r border-b border-main-border">
                 <Image src={logo} alt="Logo" width={50} height={50} className="w-[38px]" />
             </Link>

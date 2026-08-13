@@ -4,25 +4,32 @@ import { GoHeart, GoHeartFill, GoComment } from "react-icons/go";
 import { RiShareForward2Line } from "react-icons/ri";
 import { HiOutlineDotsHorizontal } from "react-icons/hi";
 import Link from 'next/link';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { toggleLikeState } from '@/actions/like';
 import { submitComment } from '@/actions/comment';
 import Video from '../CustomVideoPlayer';
 import { useUser } from '../../context/UserContext';
+import { createClient } from '@/utils/supabase/client';
+import { useRouter } from 'next/navigation';
 
 type Props = {
     post: any
 }
 
 export default function Post({ post }: Props) {
-    // const supabase = createClient();
+    
+    const supabase = useMemo(() => createClient(), []);
+
+    const router = useRouter();
+
     const [currentUser, setCurrentUser] = useState<any>(null);
     
     const [limitError, setLimitError] = useState({
         comment: false,
         like: false
     })
+
     const user = useUser()
     
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -57,6 +64,16 @@ export default function Post({ post }: Props) {
     const authorFirstName = post.author?.firstName || post.author?.first_name;
     const authorLastName = post.author?.lastName || post.author?.last_name;
     const authorProfileImage = post.author?.profileImage || post.author?.profile_image;
+
+    
+    const [isDeleted, setIsDeleted] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+
+    const [editContent, setEditContent] = useState(post.content || post.text || ""); 
+    const [isUpdating, setIsUpdating] = useState(false);
+
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
 
     // ==========================================
     // ENGAGEMENT & COMMENT STATE
@@ -215,6 +232,73 @@ export default function Post({ post }: Props) {
     }, [post.id, currentUser]);
     // ==========================================
 
+
+    // ==========================================
+    // UPDATE FUNCTION
+    // ==========================================
+    const handleUpdatePost = async () => {
+        if (!editContent.trim()) return;
+        
+        setIsUpdating(true);
+
+        try {
+            const { error } = await supabase
+            .from("posts")
+            .update({ content: editContent }) // Change 'content' to whatever your column name is
+            .eq("id", post.id);
+            
+
+            if (error) {
+                console.error("Failed to update post:", error.message);
+                alert("Failed to update. Please try again.");
+            } else {
+                // Success! Turn off edit mode and the UI will naturally show the new text
+                post.content = editContent; // Optimistically update the local prop
+                setIsEditing(false);
+            }
+        } catch (err) {
+            console.error("Unexpected error:", err);
+        } finally {
+            setIsUpdating(false);
+        }
+    };
+
+    // ==========================================
+    // BULLETPROOF DELETE FUNCTION
+    // ==========================================
+    const handleDeletePost = async () => {
+
+        try {
+            const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+            if (sessionError) {
+                console.error("Auth is broken on this page:", sessionError);
+                return;
+            }
+            
+            const { data, error } = await supabase
+                .from("posts") 
+                .delete()
+                .eq("id", post.id)
+                .select();
+
+            if (error) {
+                console.error("Database Error:", error.message);
+                alert("Failed to delete post.");
+                return;
+            }
+
+            setShowDeleteConfirm(false);
+            setIsDeleted(true); 
+
+        } catch (err) {
+            console.error("Fatal caught error:", err);
+        }
+    };
+
+    // If the post is deleted, return null so it completely vanishes from the feed
+    if (isDeleted) return null;
+
     const ImageTile = ({ src, alt, width = 600, height = 600, idx, cHeight }: any) => (
         <Link href={`/post/${post.id}?photo=${idx + 1}`} className={`z-0 ${imageCount == 4 && "xl:h-[272px]! usm:h-full h-[150px] overflow-hidden"} ${imageCount == 3 && "sm:h-[200px] h-[160px]"} ${imageCount == 2 && "usm:h-75 h-55"} w-full relative group`}>
             <div className={`absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity z-10`} />
@@ -247,7 +331,7 @@ export default function Post({ post }: Props) {
                     </Link>
                     <div className='text-foreground flex flex-col'>
                         <Link href={`/@${post.author?.username}`} className='font-medium text-[17px] hover:underline'>{authorFirstName} {authorLastName}</Link>
-                        {createdAt && <span suppressHydrationWarning className='text-[12px] text-foreground/70'>{new Date(createdAt).toString().substring(4, 15)}</span>}
+                        {createdAt && <Link href={`/post/${post.id}`} suppressHydrationWarning className='text-[12px] text-foreground/70'>{new Date(createdAt).toString().substring(4, 15)}</Link>}
                     </div>
                 </div>
                 <div className="relative" ref={menuRef}>
@@ -266,7 +350,7 @@ export default function Post({ post }: Props) {
                                     <>
                                         <li>
                                             <button 
-                                                onClick={(e) => { e.stopPropagation(); console.log("Edit Post"); setIsMenuOpen(false); }}
+                                                onClick={(e) => { e.stopPropagation(); setIsEditing(true); setIsMenuOpen(false); }}
                                                 className="w-full text-left px-4 py-3 hover:bg-white/5 transition-colors cursor-pointer"
                                             >
                                                 Edit Post
@@ -274,7 +358,11 @@ export default function Post({ post }: Props) {
                                         </li>
                                         <li className="border-t border-main-border">
                                             <button 
-                                                onClick={(e) => { e.stopPropagation(); console.log("Delete Post"); setIsMenuOpen(false); }}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setShowDeleteConfirm(true);
+                                                    setIsMenuOpen(false); 
+                                                }}
                                                 className="w-full text-left px-4 py-3 text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
                                             >
                                                 Delete Post
@@ -284,7 +372,7 @@ export default function Post({ post }: Props) {
                                 ) : (
                                     <li>
                                         <button 
-                                            onClick={(e) => { e.stopPropagation(); console.log("Report Post"); setIsMenuOpen(false); }}
+                                            onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }}
                                             className="w-full text-left px-4 py-3 hover:bg-white/5 transition-colors cursor-pointer"
                                         >
                                             Report Post
@@ -297,33 +385,105 @@ export default function Post({ post }: Props) {
                 </div>
             </div>
 
+            {/* ========================================== */}
+            {/* DELETE CONFIRMATION POPUP                  */}
+            {/* ========================================== */}
+            {showDeleteConfirm && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+                    <div 
+                        // Catch clicks inside the modal so they don't close it
+                        onClick={(e) => e.stopPropagation()} 
+                        className="w-full max-w-sm bg-dark-clr border border-main-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200"
+                    >
+                        {/* Header */}
+                        <div className="p-5 border-b border-main-border">
+                            <h3 className="text-lg font-semibold text-foreground text-center">
+                                Delete Post?
+                            </h3>
+                        </div>
+                        
+                        {/* Body */}
+                        <div className="p-5 text-center">
+                            <p className="text-[15px] text-gray-400">
+                                This can’t be undone and it will be removed from your profile, the timeline of any accounts that follow you, and from search results.
+                            </p>
+                        </div>
+                        
+                        {/* Action Buttons */}
+                        <div className="flex items-center border-t border-main-border">
+                            <button 
+                                onClick={() => setShowDeleteConfirm(false)}
+                                className="flex-1 py-4 text-[15px] font-medium text-foreground hover:bg-white/5 transition-colors border-r border-main-border cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleDeletePost}
+                                className="flex-1 py-4 text-[15px] font-bold text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className='flex flex-col gap-3'>
                 {post.content && (
-                    <Link href={`/post/${post.id}`} className='text-white text-[15px] px-5 whitespace-pre-wrap hover:text-white/90'>
-                        {post.content}
-                    </Link>
+                    <div className="mt-3 text-[15px] text-foreground leading-snug break-words">
+                        {isEditing ? (
+                            <div className="flex flex-col gap-2">
+                                <textarea
+                                    value={editContent}
+                                    onChange={(e) => setEditContent(e.target.value)}
+                                    className="w-full bg-dark-clr border border-main-border rounded-xl p-3 text-foreground focus:outline-none focus:border-main-blue resize-none min-h-[100px]"
+                                    autoFocus
+                                />
+                                <div className="flex items-center justify-end gap-2">
+                                    <button 
+                                        onClick={() => setIsEditing(false)}
+                                        disabled={isUpdating}
+                                        className="px-4 py-1.5 text-[14px] text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button 
+                                        onClick={handleUpdatePost}
+                                        disabled={isUpdating || !editContent.trim()}
+                                        className="px-4 py-1.5 text-[14px] bg-main-blue text-white rounded-full font-medium hover:bg-main-blue/80 transition-colors disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        {isUpdating ? "Saving..." : "Save"}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <p className='text-white text-[15px] px-5 whitespace-pre-wrap hover:text-white/90'>
+                                {post.content}
+                            </p>
+                        )}
+                    </div>
                 )}
                 {
                     videoUrl && !post.is_reel &&
-                    <Link href={`/post/${post.id}`} className="mt-3">
+                    <div onClick={() => router.push(`/post/${post.id}`)} className="mt-3">
                         <Video 
                             src={post.video_url} 
                             poster={post.video_url.replace('.mp4', '.jpg').replace('.webm', '.jpg')} 
                             isReel={false}
                             isPost={true}
                         />
-                    </Link>
+                    </div>
                 }
                 {
                     videoUrl && post.is_reel &&
-                    <Link href={`/reels/${post.id}`} className="mt-3">
+                    <div onClick={() => router.push(`/reels/${post.id}`)} className="mt-3">
                         <Video 
                             src={post.video_url} 
                             poster={post.video_url.replace('.mp4', '.jpg').replace('.webm', '.jpg')} 
-                            isReel={false} // Keeps it contained inside the post box
+                            isReel={false}
                             isPost={true}
                         />
-                    </Link>
+                    </div>
                 }
                 {imageCount > 0 && (
                     <div className='w-full border-y border-main-border bg-[#0a0a0a] max-h-150 overflow-hidden'>

@@ -157,20 +157,20 @@ export default function Video({ src, poster, isReel = false, isPost = false, glo
                 className={`absolute flex items-center gap-2 z-20 group/volume ${isReel ? "top-4 right-4" : "bottom-6 right-4"}`}
                 onClick={(e) => e.stopPropagation()} 
             >
-                <div className="overflow-hidden transition-all duration-300 w-0 opacity-0 group-hover/volume:w-24 group-hover/volume:opacity-100 bg-black/50 backdrop-blur-md rounded-full flex items-center px-2 h-10">
+                <div className="overflow-hidden transition-all duration-300 w-0 opacity-0 group-hover/volume:w-24 group-hover/volume:opacity-100 bg-black/50 backdrop-blur-md rounded-full flex items-center px-2 h-10" onClick={(e) => e.stopPropagation()}>
                     <input
                         type="range"
                         min="0"
                         max="1"
                         step="0.05"
                         value={isCurrentlyMuted ? 0 : currentVolume} // Bind to synced volume
-                        onChange={handleVolumeChange}
+                        onChange={(e) => {handleVolumeChange(e); e.stopPropagation()}}
                         className="w-full h-1 rounded-lg appearance-none cursor-pointer accent-main-blue bg-white/30"
                     />
                 </div>
                 
                 <button
-                    onClick={toggleMute}
+                    onClick={(e) => { toggleMute(e); e.stopPropagation(); }}
                     className="p-2 bg-black/50 backdrop-blur-md rounded-full text-white/90 hover:bg-black/70 transition-colors shrink-0"
                 >
                     {isCurrentlyMuted || currentVolume === 0 ? <IoVolumeMute size={20} /> : <IoVolumeHigh size={20} />}
