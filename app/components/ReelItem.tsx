@@ -31,11 +31,12 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
     const viewStartTime = useRef<number | null>(null);
     const totalDwellTime = useRef(0);
 
-    
+
     // 2. Create a ref for this specific reel container
     const itemRef = useRef<HTMLDivElement>(null);
     // --- LIKES STATE ---
     const hasLikedInitially = reel.likes?.some((like: any) => like.user_id === currentUser?.id);
+    const hasCommented = false;
     const [isLiked, setIsLiked] = useState(hasLikedInitially);
     const [likeCount, setLikeCount] = useState(reel.like_count);
     // --- COMMENTS STATE ---
@@ -63,26 +64,73 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
 
     // console.log(reel)
 
+    // --- PUSH DATA TO SUPABASE ---
+    const saveInteractionData = async () => {
+        if (totalDwellTime.current < 1 || !currentUser) return; // Ignore accidental fast-scrolls
+
+        // Assuming most reels are around 15-30 seconds if duration isn't perfectly accessible.
+        // If you need exact duration, you can pass it up from the Video component later.
+        const assumedDuration = 15.0; 
+        const watchPct = Math.min(maxTimeWatched.current / assumedDuration, 1.0);
+
+        const payload = {
+            user_id: currentUser.id,
+            reel_id: reel.id,
+            watch_pct: parseFloat(watchPct.toFixed(2)),
+            loop_count: loopCount.current,
+            liked: isLiked ? 1 : 0,
+            commented: hasCommented ? 1 : 0,
+            dwell_time: parseFloat(totalDwellTime.current.toFixed(2))
+        };
+
+        // Reset trackers
+        maxTimeWatched.current = 0;
+        loopCount.current = 0;
+        totalDwellTime.current = 0;
+
+        // Background save
+        supabase.from("reel_interactions").insert(payload).then(({ error }) => {
+            if (error) console.error("Telemetry error:", error);
+        });
+    };
+
+    // --- TELEMETRY & URL OBSERVER ---
     useEffect(() => {
         const observer = new IntersectionObserver(
             (entries) => {
-                entries.forEach((entry) => {
-                    // When this specific reel takes up 60% or more of the screen
-                    if (entry.isIntersecting) {
-                        // Silently update the URL in the browser address bar!
-                        window.history.replaceState(null, '', `/reels/${reel.id}`);
+                const [entry] = entries;
+
+                if (entry.isIntersecting) {
+                    // 1. SILENTLY UPDATE BROWSER URL
+                    window.history.replaceState(null, '', `/reels/${reel.id}`);
+                    
+                    // 2. START THE DWELL TIME STOPWATCH
+                    viewStartTime.current = Date.now();
+                } else {
+                    // 3. STOP THE STOPWATCH AND SAVE
+                    if (viewStartTime.current) {
+                        const dwellInSeconds = (Date.now() - viewStartTime.current) / 1000;
+                        totalDwellTime.current += dwellInSeconds;
+                        viewStartTime.current = null;
+                        
+                        saveInteractionData(); // Send to Supabase!
                     }
-                });
+                }
             },
-            { threshold: 0.6 } // 0.6 means 60% visibility
+            { threshold: 0.6 } // Matches your Video component's threshold
         );
 
-        if (itemRef.current) {
-            observer.observe(itemRef.current);
-        }
+        if (itemRef.current) observer.observe(itemRef.current);
 
-        return () => observer.disconnect();
-    }, [reel.id]);
+        return () => {
+            // Cleanup save if they close the tab
+            if (viewStartTime.current) {
+                totalDwellTime.current += (Date.now() - viewStartTime.current) / 1000;
+                saveInteractionData();
+            }
+            observer.disconnect();
+        };
+    }, [reel.id, isLiked, hasCommented]);
 
     // --- LIKE LOGIC ---
     const handleLikeToggle = async () => {
@@ -344,6 +392,8 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                     <Video src={reel.video_url} isReel={true} globalMuted={globalMuted} onToggleMuted={onToggleMuted} 
                     globalVolume={globalVolume}
                     onVolumeChange={onVolumeChange}
+                    maxTimeWatched={maxTimeWatched}
+                    loopCount={loopCount}
                     />
 
                     <div className="absolute bottom-0 left-0 w-full pointer-events-none flex flex-col justify-end pb-4 px-3 sm:px-4 z-20">

@@ -1,4 +1,4 @@
-// src/lib/api/reel-engine.ts
+import { createClient } from "@/utils/supabase/client"
 
 /**
  * Defines the exact shape of behavioral data expected by the 
@@ -13,18 +13,55 @@ export interface ReelInteraction {
 }
 
 /**
+ * Generates neutral baseline data for new users who haven't watched 10 reels yet.
+ */
+const getNeutralPadding = (count: number): ReelInteraction[] => {
+    return Array(count).fill({
+        watch_pct: 0.5,     // Watched half the video
+        loop_count: 1,      // Didn't loop
+        liked: 0,           // No interaction
+        commented: 0,       // No interaction
+        dwell_time: 5.0     // Scrolled past at average speed
+    });
+};
+
+/**
  * MOCK GENERATOR: Creates a temporary array of 10 interaction logs.
  * The 1D-CNN requires exactly 10 sequence steps to run inference.
  * (This will be replaced by real Supabase tracking data later).
  */
-export const getRecentUserHistory = (): ReelInteraction[] => {
-    return Array(10).fill({
-        watch_pct: 0.85,
-        loop_count: 2,
-        liked: 1,
-        commented: 0,
-        dwell_time: 14.2
-    });
+export const getRecentUserHistory = async (userId: string | undefined): Promise<ReelInteraction[]> => {
+    if(!userId) return getNeutralPadding(10);
+    
+    const supabase = createClient()
+    
+    try {
+        const { data, error } = await supabase
+            .from("reel_interactions")
+            .select("watch_pct, loop_count, liked, commented, dwell_time")
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false })
+            .limit(10);
+
+        if (error) {
+            console.error("Database error fetching history:", error);
+            return getNeutralPadding(10);
+        }
+
+        let history = data || [];
+
+        // COLD START FIX: If they have less than 10 logs, pad the rest of the array
+        if (history.length < 10) {
+            const paddingNeeded = 10 - history.length;
+            history = [...history, ...getNeutralPadding(paddingNeeded)];
+        }
+
+        return history;
+
+    } catch (err) {
+        console.error("Failed to process history:", err);
+        return getNeutralPadding(10);
+    }
 };
 
 /**

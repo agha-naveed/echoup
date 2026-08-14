@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { AiOutlineLoading3Quarters } from "react-icons/ai";
 import ReelItem from "./ReelItem";
@@ -16,22 +16,58 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
     const supabase = createClient()
     const user = useUser();
 
+    // 1. ALL HOOKS MUST GO HERE AT THE TOP
     const [isGlobalMuted, setIsGlobalMuted] = useState(true);
     const [globalVolume, setGlobalVolume] = useState(1);
-
     const [reels, setReels] = useState<any[]>([]);
     const [currentUser, setCurrentUser] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
-
     const [page, setPage] = useState(0);
+    const [isFetching, setIsFetching] = useState(false);
+    
+    const loadMoreRef = useRef<HTMLDivElement>(null);
 
+    // 2. DEFINE FUNCTIONS
+    const loadMoreReels = async () => {
+        if (isFetching) return;
+        setIsFetching(true);
+
+        // Fetch raw next 10 reels from Supabase
+        const { data: rawReels, error } = await supabase
+            .from("posts") 
+            .select("*")
+            .range(page * 10, (page + 1) * 10 - 1)
+            .order("created_at", { ascending: false }).eq("is_reel", true);
+
+        if (error || !rawReels || rawReels.length === 0) {
+            console.log("No more reels to fetch or database error.");
+            setIsFetching(false);
+            return;
+        }
+
+        const candidateIds = rawReels.map(r => r.id);
+        
+        // Fetch real history
+        const recentHistory = await getRecentUserHistory(currentUser?.id); 
+
+        // Fetch AI rankings
+        const rankedResult = await fetchRankedFeed(recentHistory, candidateIds);
+
+        const sortedReels = rankedResult.map((ranked: { reel_id: string, score: number }) => 
+            rawReels.find(r => r.id === ranked.reel_id)
+        ).filter(Boolean); 
+
+        // Update UI and increment page
+        setReels(prev => [...prev, ...sortedReels]);
+        setPage(prev => prev + 1);
+        setIsFetching(false);
+    };
+
+    // 3. ALL USE-EFFECTS GO HERE
     useEffect(() => {
         const fetchReelsData = async () => {
-            // 1. Get the current user (so we know who is liking the videos)
-
             setCurrentUser(user?.user);
 
-            // 2. Fetch all posts where is_reel is true
             const { data, error } = await supabase
                 .from("posts")
                 .select(`
@@ -58,10 +94,10 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
                     if (targetReel) {
                         setReels([targetReel, ...otherReels]);
                     } else {
-                        setReels(data); // Fallback just in case the ID is invalid
+                        setReels(data); 
                     }
                 } else {
-                    setReels(data); // Normal chronological feed
+                    setReels(data); 
                 }
             }
             setIsLoading(false);
@@ -69,6 +105,28 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
 
         fetchReelsData();
     }, [initialReelId, supabase, user]);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const [entry] = entries;
+                if (entry.isIntersecting && !isFetching) {
+                    loadMoreReels(); 
+                }
+            },
+            { threshold: 0.1 } 
+        );
+
+        if (loadMoreRef.current) {
+            observer.observe(loadMoreRef.current);
+        }
+
+        return () => observer.disconnect();
+    }, [isFetching, page]); 
+
+    // -------------------------------------------------------------
+    // 4. CONDITIONAL RETURNS MUST BE PLACED AFTER ALL HOOKS
+    // -------------------------------------------------------------
 
     if (isLoading) {
         return (
@@ -87,40 +145,7 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
         );
     }
 
-    
-    const loadMoreReels = async () => {
-        // Fetch raw next 10 reels from Supabase
-        const { data: rawReels, error } = await supabase
-            .from("reels") // (or "posts", depending on your table name)
-            .select("*")
-            .range(page * 10, (page + 1) * 10 - 1)
-            .order("created_at", { ascending: false });
-
-        // FIX: Handle the 'possibly null' error
-        if (error || !rawReels || rawReels.length === 0) {
-            console.log("No more reels to fetch or database error.");
-            return;
-        }
-
-        const candidateIds = rawReels.map(r => r.id);
-        
-        // Use the mock history until we build the real tracker
-        const recentHistory = getRecentUserHistory(); 
-
-        // Fetch AI rankings
-        const rankedResult = await fetchRankedFeed(recentHistory, candidateIds);
-
-        // FIX: Explicitly type the 'ranked' parameter
-        const sortedReels = rankedResult.map((ranked: { reel_id: string, score: number }) => 
-            rawReels.find(r => r.id === ranked.reel_id)
-        ).filter(Boolean); // filter(Boolean) removes any undefined values
-
-        // Update UI and increment page for the next scroll
-        setReels(prev => [...prev, ...sortedReels]);
-        setPage(prev => prev + 1);
-    };
-
-
+    // 5. FINAL COMPONENT RETURN
     return (
         <div className="w-full h-full overflow-y-auto snap-y snap-mandatory relative custom-scroll-hidden">
             {reels.map((reel) => (
@@ -134,6 +159,11 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
                     onVolumeChange={setGlobalVolume}
                 />
             ))}
+            <div ref={loadMoreRef} className="w-full h-20 flex items-center justify-center snap-start shrink-0">
+                {isFetching && (
+                    <div className="w-8 h-8 border-4 border-main-blue border-t-transparent rounded-full animate-spin"></div>
+                )}
+            </div>
         </div>
     );
 }

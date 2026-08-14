@@ -9,14 +9,15 @@ interface VideoPlayerProps {
     isReel?: boolean; 
     isPost?: boolean;
     globalMuted?: boolean; 
+    maxTimeWatched: any;
+    loopCount: any;
     onToggleMuted?: () => void; 
-    // NEW: Allow parent to control volume
     globalVolume?: number;
     onVolumeChange?: (newVolume: number) => void;
     style?: string;
 }
 
-export default function Video({ src, poster, isReel = false, isPost = false, globalMuted, onToggleMuted, globalVolume, onVolumeChange, style }: VideoPlayerProps) {
+export default function Video({ src, poster, isReel = false, isPost = false, globalMuted, onToggleMuted, globalVolume, onVolumeChange, style, maxTimeWatched, loopCount }: VideoPlayerProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -97,6 +98,11 @@ export default function Video({ src, poster, isReel = false, isPost = false, glo
             const current = videoRef.current.currentTime;
             const total = videoRef.current.duration;
             setProgress((current / total) * 100);
+
+            maxTimeWatched.current = Math.max(
+                maxTimeWatched.current, 
+                videoRef.current.currentTime
+            );
         }
     };
 
@@ -126,6 +132,7 @@ export default function Video({ src, poster, isReel = false, isPost = false, glo
         return () => observer.disconnect();
     }, []);
 
+    
     return (
         <div
             ref={containerRef}
@@ -151,13 +158,21 @@ export default function Video({ src, poster, isReel = false, isPost = false, glo
                     ref={videoRef}
                     src={src}
                     poster={poster}
-                    loop
                     playsInline
                     muted={isCurrentlyMuted} 
                     onTimeUpdate={handleTimeUpdate}
                     onPlay={() => setIsPlaying(true)}
                     onPause={() => setIsPlaying(false)}
-                    className={`max-w-full ${isReel ? "w-auto h-auto max-h-[calc(100vh-120px)] sm:max-w-[450px]" : "w-full h-fit object-contain"}`}
+                    className={`max-w-full w-auto h-auto max-h-[calc(100vh-120px)] sm:max-w-[450px]`}
+
+                    // 2. TRACK LOOPS
+                    onEnded={() => {
+                        loopCount.current += 1;
+                        if (videoRef.current) {
+                            videoRef.current.currentTime = 0; // Reset to start
+                            videoRef.current.play();          // Play again
+                        }
+                    }}
                 />
             }
 
