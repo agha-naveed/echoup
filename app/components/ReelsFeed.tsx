@@ -1,7 +1,4 @@
 "use client"
-import Image from "next/image";
-import { GoHeart, GoComment, GoShare } from "react-icons/go";
-import Video from "./CustomVideoPlayer"; // Make sure this path is correct!
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { AiOutlineLoading3Quarters } from "react-icons/ai";

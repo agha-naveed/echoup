@@ -18,6 +18,20 @@ interface ReelItemProps {
     onVolumeChange: (newVolume: number) => void;
 }
 
+interface AuthorProps {
+    id: string;
+    first_name: string;
+    last_name: string;
+    profile_image: string;
+    username: string;
+}
+interface CommentProps {
+    author: AuthorProps[];
+    content: string;
+    created_at: string;
+    id: string;
+}
+
 export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted, globalVolume, onVolumeChange }: ReelItemProps) {
     const supabase = createClient();
 
@@ -27,7 +41,6 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
     const hasLikedInitially = reel.likes?.some((like: any) => like.user_id === currentUser?.id);
     const [isLiked, setIsLiked] = useState(hasLikedInitially);
     const [likeCount, setLikeCount] = useState(reel.like_count);
-    
     // --- COMMENTS STATE ---
     const [showComments, setShowComments] = useState(false);
     const [comments, setComments] = useState<any[]>([]);
@@ -43,6 +56,7 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
     const [lastCommentTime, setLastCommentTime] = useState(0);
     const [rateLimitError, setRateLimitError] = useState("");
 
+    // console.log(reel)
 
     useEffect(() => {
         const observer = new IntersectionObserver(
@@ -81,11 +95,58 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
     };
 
     // --- FETCH COMMENTS LOGIC ---
-    // Only fetch when the user opens the panel for the first time
     useEffect(() => {
+        // 1. Fetch initial comments
         if (showComments && comments.length === 0) {
             fetchComments();
         }
+
+        // // 2. Set up the Live Listener for new comments
+        // let realtimeChannel: any;
+
+        // if (showComments) {
+        //     realtimeChannel = supabase
+        //         .channel(`live-comments-${reel.id}`)
+        //         .on(
+        //             "postgres_changes",
+        //             {
+        //                 event: "INSERT",
+        //                 schema: "public",
+        //                 table: "comments",
+        //                 filter: `post_id=eq.${reel.id}`, // Only listen to THIS reel
+        //             },
+        //             async (payload) => {
+        //                 // The realtime payload doesn't include the joined "author" data.
+        //                 // So, we quickly fetch the full comment data for this specific new ID.
+        //                 const { data: fullNewComment } = await supabase
+        //                     .from("comments")
+        //                     .select(`
+        //                         id,
+        //                         content,
+        //                         created_at,
+        //                         author:users ( id, username, first_name, last_name, profile_image )
+        //                     `)
+        //                     .eq("id", payload.new.id)
+        //                     .single();
+
+        //                 if (fullNewComment) {
+        //                     // Prevent duplicates just in case the Optimistic UI (above) already added it
+        //                     setComments((prev) => {
+        //                         if (prev.some(c => c.id === fullNewComment.id)) return prev;
+        //                         return [fullNewComment, ...prev]; // Put new comments at the top
+        //                     });
+        //                 }
+        //             }
+        //         )
+        //         .subscribe();
+        // }
+
+        // // 3. Cleanup: Unsubscribe when the user closes the comments or leaves the page
+        // return () => {
+        //     if (realtimeChannel) {
+        //         supabase.removeChannel(realtimeChannel);
+        //     }
+        // };
     }, [showComments]);
 
     const fetchComments = async () => {
@@ -98,14 +159,27 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                 created_at,
                 author:users ( id, username, first_name, last_name, profile_image )
             `)
-            .eq("post_id", reel.id) // Assuming your comments table links via post_id
+            .eq("post_id", reel.id)
             .order("created_at", { ascending: false });
 
+
+        // THIS WILL TELL YOU EXACTLY WHAT IS WRONG
+        if (error) {
+            console.error("Supabase 400 Error:", error.message);
+            console.error("Error Hint:", error.hint);
+        }
+
         if (!error && data) {
-            setComments(data);
+            // setComments(data);
+            setComments(data as any);
         }
         setIsFetchingComments(false);
     };
+
+    useEffect(() => {
+        if(comments.length > 0)
+            console.log(comments)
+    }, [comments])
 
     // --- POST COMMENT LOGIC (WITH RATE LIMITING) ---
     const handlePostComment = async () => {
@@ -126,7 +200,7 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
         setRateLimitError("");
 
         // 2. Database Insert
-        const { data, error } = await supabase
+        const { data:newComment, error:insertError } = await supabase
             .from("comments")
             .insert({
                 post_id: reel.id,
@@ -137,18 +211,30 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                 id,
                 content,
                 created_at,
-                author:users ( id, username, first_name, profile_image )
+                author:users ( id, username, first_name, last_name, profile_image )
             `)
             .single();
 
-        if (!error && data) {
+        if (!insertError && newComment) {
+
+            const { data, error:rpcError } = await supabase.rpc("increment_comment_count", {
+                p_post_id: reel.id,
+            });
+
+            
+            if (rpcError) {
+                console.error("Failed to increment:", rpcError);
+            } else {
+                console.log("New comment count:", newComment);
+            }
+
             // 3. Optimistic UI Update for comments
-            setComments(prev => [data, ...prev]);
+            setComments(prev => [newComment, ...prev]);
             setCommentText(""); // Clear input
             setCommentCount((prev: number) => prev + 1); // Update floating count
             setLastCommentTime(Date.now()); // Reset rate limit timer
         } else {
-            console.error("Failed to post comment:", error);
+            console.error("Failed to post comment:", insertError);
         }
 
         setIsPosting(false);
@@ -284,30 +370,34 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                                     comments.map((comment) => (
                                         <div key={comment.id} className="flex gap-3">
                                             <div className="w-8 h-8 rounded-full bg-dark-clr overflow-hidden shrink-0 border border-main-border">
-                                                {comment.author?.profile_image ? (
-                                                    <Image src={comment.author.profile_image} alt="User" width={32} height={32} className="object-cover w-full h-full" />
+                                                {comment?.author?.profile_image ? (
+                                                    <Image src={comment?.author?.profile_image} alt="User" width={32} height={32} className="object-cover w-full h-full" />
                                                 ) : (
                                                     <div className="w-full h-full bg-main-blue flex justify-center items-center text-white text-sm font-bold">
-                                                        {comment.author?.first_name?.charAt(0) || "U"}
+                                                        {comment?.author?.first_name?.charAt(0) || "U"}
                                                     </div>
                                                 )}
                                             </div>
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-2">
-                                                    <Link href={`/@${comment.author?.username}`} className="text-sm font-semibold text-foreground">
-                                                        {comment.author?.first_name + " " + comment.author?.last_name}
+                                                    <Link href={`/@${comment?.author?.username}`} className="text-sm font-semibold text-foreground">
+                                                        {comment?.author?.first_name + " " + comment?.author?.last_name}
                                                     </Link>
                                                     <span className="text-xs text-gray-500">
-                                                        {new Date(comment.created_at).toLocaleDateString()}
+                                                        {new Date(comment?.created_at).toLocaleDateString()}
                                                     </span>
-                                                    <span className="text-white text-[12px] flex items-center gap-1 bg-dark-clr py-0.5 px-2 rounded-lg">
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 21 21">
-                                                            <path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" d="M17 4a2.12 2.12 0 0 1 0 3l-9.5 9.5l-4 1l1-3.944l9.504-9.552a2.116 2.116 0 0 1 2.864-.125zM9.5 17.5h8m-2-11l1 1"></path>
-                                                        </svg>
-                                                        <span className="text-[10px]">Author</span>
-                                                    </span>
+
+                                                    {
+                                                        comment?.author?.id === reel.author?.id &&
+                                                            <span className="text-white text-[12px] flex items-center gap-1 bg-dark-clr py-0.5 px-2 rounded-lg">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 21 21">
+                                                                    <path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" d="M17 4a2.12 2.12 0 0 1 0 3l-9.5 9.5l-4 1l1-3.944l9.504-9.552a2.116 2.116 0 0 1 2.864-.125zM9.5 17.5h8m-2-11l1 1"></path>
+                                                                </svg>
+                                                                <span className="text-[10px]">Author</span>
+                                                            </span>
+                                                    }
                                                 </div>
-                                                <p className="text-sm text-foreground/90 mt-0.5">{comment.content}</p>
+                                                <p className="text-sm text-foreground/90 mt-0.5">{comment?.content}</p>
                                             </div>
                                         </div>
                                     ))
