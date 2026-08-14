@@ -1,4 +1,4 @@
-import PostOpen from '@/app/components/PostOpen'
+import PostOpen from '@/app/components/post/PostOpen'
 import { createClient } from '@/utils/supabase/server';
 import { notFound } from 'next/navigation';
 

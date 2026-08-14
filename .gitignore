@@ -17,7 +17,7 @@
 /.next/
 /out/
 
-/backend/.env
+/backend/.env*
 /backend/__pycache__
 # production
 /build
