@@ -48,6 +48,9 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
     const [isFetchingComments, setIsFetchingComments] = useState(false);
     const [isPosting, setIsPosting] = useState(false);
     const [commentCount, setCommentCount] = useState(reel.comment_count || 0);
+
+    const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+    const [editCommentText, setEditCommentText] = useState("");
     
     // --- SHARE STATE ---
     const [copied, setCopied] = useState(false);
@@ -55,6 +58,11 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
     // --- RATE LIMITING STATE ---
     const [lastCommentTime, setLastCommentTime] = useState(0);
     const [rateLimitError, setRateLimitError] = useState("");
+
+    const COMMENTS_PER_PAGE = 30;
+    const [page, setPage] = useState(0);
+    const [hasMoreComments, setHasMoreComments] = useState(true);
+    const observerTarget = useRef<HTMLDivElement>(null);
 
     // console.log(reel)
 
@@ -96,61 +104,21 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
 
     // --- FETCH COMMENTS LOGIC ---
     useEffect(() => {
-        // 1. Fetch initial comments
         if (showComments && comments.length === 0) {
-            fetchComments();
+            setPage(0);
+            setHasMoreComments(true);
+            fetchComments(0);
         }
-
-        // // 2. Set up the Live Listener for new comments
-        // let realtimeChannel: any;
-
-        // if (showComments) {
-        //     realtimeChannel = supabase
-        //         .channel(`live-comments-${reel.id}`)
-        //         .on(
-        //             "postgres_changes",
-        //             {
-        //                 event: "INSERT",
-        //                 schema: "public",
-        //                 table: "comments",
-        //                 filter: `post_id=eq.${reel.id}`, // Only listen to THIS reel
-        //             },
-        //             async (payload) => {
-        //                 // The realtime payload doesn't include the joined "author" data.
-        //                 // So, we quickly fetch the full comment data for this specific new ID.
-        //                 const { data: fullNewComment } = await supabase
-        //                     .from("comments")
-        //                     .select(`
-        //                         id,
-        //                         content,
-        //                         created_at,
-        //                         author:users ( id, username, first_name, last_name, profile_image )
-        //                     `)
-        //                     .eq("id", payload.new.id)
-        //                     .single();
-
-        //                 if (fullNewComment) {
-        //                     // Prevent duplicates just in case the Optimistic UI (above) already added it
-        //                     setComments((prev) => {
-        //                         if (prev.some(c => c.id === fullNewComment.id)) return prev;
-        //                         return [fullNewComment, ...prev]; // Put new comments at the top
-        //                     });
-        //                 }
-        //             }
-        //         )
-        //         .subscribe();
-        // }
-
-        // // 3. Cleanup: Unsubscribe when the user closes the comments or leaves the page
-        // return () => {
-        //     if (realtimeChannel) {
-        //         supabase.removeChannel(realtimeChannel);
-        //     }
-        // };
     }, [showComments]);
 
-    const fetchComments = async () => {
+    const fetchComments = async (pageNumber: number = 0) => {
+        if (isFetchingComments) return;
         setIsFetchingComments(true);
+
+        // Calculate the exact database rows to fetch (e.g., 0 to 29, 30 to 59)
+        const from = pageNumber * COMMENTS_PER_PAGE;
+        const to = from + COMMENTS_PER_PAGE - 1;
+
         const { data, error } = await supabase
             .from("comments")
             .select(`
@@ -158,28 +126,36 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                 content,
                 created_at,
                 author:users ( id, username, first_name, last_name, profile_image )
-            `)
+            `) // Add your comment_likes queries here if you implemented them!
             .eq("post_id", reel.id)
-            .order("created_at", { ascending: false });
-
-
-        // THIS WILL TELL YOU EXACTLY WHAT IS WRONG
-        if (error) {
-            console.error("Supabase 400 Error:", error.message);
-            console.error("Error Hint:", error.hint);
-        }
+            .order("created_at", { ascending: false })
+            .range(from, to);
 
         if (!error && data) {
-            // setComments(data);
-            setComments(data as any);
+            // If we received fewer than 30 comments, we've reached the end of the database
+            if (data.length < COMMENTS_PER_PAGE) {
+                setHasMoreComments(false);
+            } else {
+                setHasMoreComments(true);
+            }
+
+            if (pageNumber === 0) {
+                // Initial load
+                setComments(data);
+            } else {
+                // Infinite scroll load: Append new comments, filtering out potential duplicates 
+                // that might have snuck in via the realtime listener
+                setComments((prev) => {
+                    const newComments = data.filter((d) => !prev.some((p) => p.id === d.id));
+                    return [...prev, ...newComments];
+                });
+            }
+        } else if (error) {
+            console.error("Failed to fetch comments:", error);
         }
+        
         setIsFetchingComments(false);
     };
-
-    useEffect(() => {
-        if(comments.length > 0)
-            console.log(comments)
-    }, [comments])
 
     // --- POST COMMENT LOGIC (WITH RATE LIMITING) ---
     const handlePostComment = async () => {
@@ -239,6 +215,100 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
 
         setIsPosting(false);
     };
+
+    // --- UPDATE COMMENT LOGIC ---
+    const handleUpdateComment = async (commentId: string) => {
+        if (!editCommentText.trim()) return;
+
+        // 1. Optimistic UI: Instantly update the comment on the screen
+        setComments((prev) => 
+            prev.map((c) => c.id === commentId ? { ...c, content: editCommentText.trim() } : c)
+    );
+    setEditingCommentId(null);
+        
+        // 2. Database Update
+        const { error } = await supabase
+        .from("comments")
+        .update({ content: editCommentText.trim() })
+        .eq("id", commentId);
+
+        if (error) console.error("Failed to update comment:", error);
+    };
+
+    // --- DELETE COMMENT LOGIC ---
+    const handleDeleteComment = async (commentId: string) => {
+        // 1. Optimistic UI: Instantly remove it and drop the count on screen
+        setComments((prev) => prev.filter((c) => c.id !== commentId));
+        setCommentCount((prev: number) => Math.max(0, prev - 1));
+
+        // 2. Database Delete (This automatically fires the SQL Trigger to fix the count!)
+        const { error: deleteError } = await supabase
+            .from("comments")
+            .delete()
+            .eq("id", commentId);
+
+        if (deleteError) {
+            console.error("Failed to delete comment:", deleteError);
+        }
+        
+        // Notice: No RPC call here anymore! The trigger does the heavy lifting.
+    };
+
+
+    // --- LIKE COMMENT LOGIC ---
+    const handleToggleCommentLike = async (commentId: string, isCurrentlyLiked: boolean) => {
+        if (!currentUser) return;
+
+        // 1. Optimistic UI: Instantly toggle the heart and update the count
+        setComments((prev) => prev.map((c) => {
+            if (c.id === commentId) {
+                const currentCount = c.like_count || 0;
+                return {
+                    ...c,
+                    user_has_liked: !isCurrentlyLiked,
+                    like_count: isCurrentlyLiked ? Math.max(0, currentCount - 1) : currentCount + 1
+                };
+            }
+            return c;
+        }));
+
+        // 2. Database Update
+        if (!isCurrentlyLiked) {
+            const { error } = await supabase
+                .from("comment_likes")
+                .insert({ comment_id: commentId, user_id: currentUser.id });
+            if (error) console.error("Failed to like comment:", error);
+        } else {
+            const { error } = await supabase
+                .from("comment_likes")
+                .delete()
+                .match({ comment_id: commentId, user_id: currentUser.id });
+            if (error) console.error("Failed to unlike comment:", error);
+        }
+    };
+
+
+    // --- INFINITE SCROLL OBSERVER ---
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            (entries) => {
+                // If the invisible target is on screen, and we aren't currently loading, and there's more to load
+                if (entries[0].isIntersecting && hasMoreComments && !isFetchingComments && showComments && comments.length > 0) {
+                    const nextPage = page + 1;
+                    setPage(nextPage);
+                    fetchComments(nextPage);
+                }
+            },
+            { threshold: 0.1 } // Trigger as soon as 10% of the target is visible
+        );
+
+        if (observerTarget.current) {
+            observer.observe(observerTarget.current);
+        }
+
+        return () => observer.disconnect();
+    }, [hasMoreComments, isFetchingComments, page, showComments, comments.length]);
+
 
     // --- SHARE LOGIC ---
     const handleShare = async () => {
@@ -366,41 +436,131 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                                         <p className="text-sm">Start the conversation!</p>
                                     </div>
                                 ) : (
-                                    // comment.author.id == currentUser.author.id
-                                    comments.map((comment) => (
-                                        <div key={comment.id} className="flex gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-dark-clr overflow-hidden shrink-0 border border-main-border">
-                                                {comment?.author?.profile_image ? (
-                                                    <Image src={comment?.author?.profile_image} alt="User" width={32} height={32} className="object-cover w-full h-full" />
-                                                ) : (
-                                                    <div className="w-full h-full bg-main-blue flex justify-center items-center text-white text-sm font-bold">
-                                                        {comment?.author?.first_name?.charAt(0) || "U"}
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <div className="flex flex-col">
-                                                <div className="flex items-center gap-2">
-                                                    <Link href={`/@${comment?.author?.username}`} className="text-sm font-semibold text-foreground">
-                                                        {comment?.author?.first_name + " " + comment?.author?.last_name}
-                                                    </Link>
-                                                    <span className="text-xs text-gray-500">
-                                                        {new Date(comment?.created_at).toLocaleDateString()}
-                                                    </span>
+                                    <>
+                                        {comments.map((comment) => {
+                                            // 1. Permission Checks
+                                            const isOwner = currentUser?.id === comment.author?.id;
+                                            const isReelAuthor = currentUser?.id === reel.author?.id;
+                                            const canDelete = isOwner || isReelAuthor;
+                                            
+                                            const isEditing = editingCommentId === comment.id;
+                                            const isLiked = comment.user_has_liked;
+                                            const commentLikes = comment.like_count || 0;
 
-                                                    {
-                                                        comment?.author?.id === reel.author?.id &&
-                                                            <span className="text-white text-[12px] flex items-center gap-1 bg-dark-clr py-0.5 px-2 rounded-lg">
-                                                                <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 21 21">
-                                                                    <path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" d="M17 4a2.12 2.12 0 0 1 0 3l-9.5 9.5l-4 1l1-3.944l9.504-9.552a2.116 2.116 0 0 1 2.864-.125zM9.5 17.5h8m-2-11l1 1"></path>
-                                                                </svg>
-                                                                <span className="text-[10px]">Author</span>
+                                            return (
+                                                <div key={comment.id} className="flex gap-3 group/comment items-start">
+                                                    {/* AVATAR */}
+                                                    <div className="w-8 h-8 rounded-full bg-dark-clr overflow-hidden shrink-0 border border-main-border">
+                                                        {comment.author?.profile_image ? (
+                                                            <Image src={comment.author.profile_image} alt="User" width={32} height={32} className="object-cover w-full h-full" />
+                                                        ) : (
+                                                            <div className="w-full h-full bg-main-blue flex justify-center items-center text-white text-sm font-bold">
+                                                                {comment.author?.first_name?.charAt(0) || "U"}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {/* COMMENT BODY */}
+                                                    <div className="flex flex-col flex-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <Link href={`/@${comment.author?.username || ''}`} className="text-sm font-semibold text-foreground">
+                                                                {comment.author?.first_name || 'User'} {comment.author?.last_name || ''}
+                                                            </Link>
+                                                            <span className="text-xs text-gray-500">
+                                                                {new Date(comment.created_at).toLocaleDateString()}
                                                             </span>
-                                                    }
+                                                            {comment.author?.id === reel.author?.id && (
+                                                                <span className="text-white text-[12px] flex items-center gap-1 bg-dark-clr py-0.5 px-2 rounded-lg border border-main-border/50">
+                                                                    <span className="text-[10px]">Author</span>
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        
+                                                        {isEditing ? (
+                                                            <div className="mt-2 flex flex-col gap-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={editCommentText}
+                                                                    onChange={(e) => setEditCommentText(e.target.value)}
+                                                                    onKeyDown={(e) => e.key === 'Enter' && handleUpdateComment(comment.id)}
+                                                                    className="w-full bg-dark-clr border border-main-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-main-blue"
+                                                                    autoFocus
+                                                                />
+                                                                <div className="flex gap-2 justify-end">
+                                                                    <button 
+                                                                        onClick={() => setEditingCommentId(null)} 
+                                                                        className="text-[12px] text-gray-400 hover:text-white transition-colors"
+                                                                    >
+                                                                        Cancel
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={() => handleUpdateComment(comment.id)} 
+                                                                        className="text-[12px] bg-main-blue text-white px-3 py-1 rounded-full font-medium hover:bg-main-blue/80 transition-colors"
+                                                                    >
+                                                                        Save
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <p className="text-sm text-foreground/90 mt-0.5 pr-4">{comment.content}</p>
+                                                        )}
+
+                                                        {/* ACTION BUTTONS (Hover Reveal) */}
+                                                        {!isEditing && (
+                                                            <div className="flex gap-4 mt-1.5 opacity-0 group-hover/comment:opacity-100 transition-opacity items-center">
+                                                                {isOwner && (
+                                                                    <button 
+                                                                        onClick={() => { 
+                                                                            setEditingCommentId(comment.id); 
+                                                                            setEditCommentText(comment.content); 
+                                                                        }} 
+                                                                        className="text-[11px] font-semibold text-gray-500 hover:text-main-blue transition-colors"
+                                                                    >
+                                                                        Edit
+                                                                    </button>
+                                                                )}
+                                                                {canDelete && (
+                                                                    <button 
+                                                                        onClick={() => handleDeleteComment(comment.id)} 
+                                                                        className="text-[11px] font-semibold text-gray-500 hover:text-red-500 transition-colors"
+                                                                    >
+                                                                        Delete
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* RIGHT SIDE: LIKE BUTTON */}
+                                                    {!isEditing && (
+                                                        <div className="flex flex-col items-center justify-start pt-2 pl-2 shrink-0">
+                                                            <button 
+                                                                onClick={() => handleToggleCommentLike(comment.id, !!isLiked)}
+                                                                className="p-1 transition-transform hover:scale-110 active:scale-95"
+                                                            >
+                                                                {isLiked ? (
+                                                                    <FaHeart className="text-red-500 text-[14px]" />
+                                                                ) : (
+                                                                    <GoHeart className="text-gray-400 hover:text-white text-[14px] transition-colors" />
+                                                                )}
+                                                            </button>
+                                                            {commentLikes > 0 && (
+                                                                <span className="text-[10px] text-gray-400 font-medium mt-0.5">
+                                                                    {commentLikes}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                <p className="text-sm text-foreground/90 mt-0.5">{comment?.content}</p>
-                                            </div>
+                                            );
+                                        })}
+
+                                        <div ref={observerTarget} className="w-full h-10 flex items-center justify-center shrink-0">
+                                            {isFetchingComments && page > 0 && (
+                                                <AiOutlineLoading3Quarters className="animate-spin text-xl text-main-blue/70" />
+                                            )}
                                         </div>
-                                    ))
+                                    </>
                                 )}
                             </div>
 
