@@ -1,20 +1,15 @@
-import os
-import json
-import asyncio
-from datetime import datetime
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from supabase import create_client, Client
-from dotenv import load_dotenv
 
-load_dotenv()
+# Import your modular routers
+from reel_routes import router as reel_router
+from chat_routes import router as chat_router
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+app = FastAPI(title="Echo Up API Engine")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-app = FastAPI()
+# Mount the modular endpoints
+app.include_router(reel_router)
+app.include_router(chat_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,86 +19,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Connection Manager (Multi-Device Support)
-class ConnectionManager:
-    def __init__(self):
-        # Maps user_id -> a LIST of their active WebSocket connections
-        self.active_connections: dict[str, list[WebSocket]] = {}
-
-    async def connect(self, websocket: WebSocket, user_id: str):
-        await websocket.accept()
-        if user_id not in self.active_connections:
-            self.active_connections[user_id] = []
-        self.active_connections[user_id].append(websocket)
-        print(f"User {user_id} connected. Active devices: {len(self.active_connections[user_id])}")
-
-    def disconnect(self, websocket: WebSocket, user_id: str):
-        if user_id in self.active_connections:
-            if websocket in self.active_connections[user_id]:
-                self.active_connections[user_id].remove(websocket)
-            if len(self.active_connections[user_id]) == 0:
-                del self.active_connections[user_id]
-            print(f"User {user_id} disconnected.")
-
-    async def send_personal_message(self, message: dict, user_id: str):
-        # Send the message to EVERY tab/device the user currently has open
-        if user_id in self.active_connections:
-            for connection in self.active_connections[user_id]:
-                await connection.send_json(message)
-
-manager = ConnectionManager()
-
-# Helper function to run Supabase inserts without blocking the server
-def save_message_to_db(message_data: dict):
-    return supabase.table("messages").insert(message_data).execute()
-
-# The WebSocket Endpoint
-@app.websocket("/ws/chat/{user_id}/{friend_id}")
-async def chat_endpoint(websocket: WebSocket, user_id: str, friend_id: str):
-    await manager.connect(websocket, user_id)
-
-    try:
-        while True:
-            # A. Wait for a message from the React frontend
-            data = await websocket.receive_text()
-            message_data = json.loads(data)
-
-            # B. Format the data for Supabase
-            new_db_message = {
-                "sender_id": user_id,
-                "receiver_id": friend_id,
-                "text": message_data.get("text")
-            }
-
-            # C. Save to the database asynchronously (prevents freezing)
-            db_response = await asyncio.to_thread(save_message_to_db, new_db_message)
-            saved_message = db_response.data[0]
-
-            # D. Format the exact payload your Next.js ChatBox is expecting
-            frontend_payload = {
-                "id": saved_message["id"],
-                "senderId": user_id,
-                "text": saved_message["text"],
-                "timestamp": saved_message["created_at"]
-            }
-
-            # E. Route the live message to the friend's ChatBox
-            await manager.send_personal_message(frontend_payload, friend_id)
-
-            # F. Bounce it back to the sender too, so every open tab/device
-            # of the sender's own account also gets the confirmed message
-            # (with the real DB id/timestamp instead of the optimistic one).
-            await manager.send_personal_message(frontend_payload, user_id)
-
-    except WebSocketDisconnect:
-        manager.disconnect(websocket, user_id)
-    except Exception as e:
-        print(f"Error: {e}")
-        manager.disconnect(websocket, user_id)
-
-
-# Simple health check — useful to confirm the server is actually reachable
-# from the browser (separate from whether the WebSocket itself connects).
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "message": "Server running: Chat & Reel AI active"}

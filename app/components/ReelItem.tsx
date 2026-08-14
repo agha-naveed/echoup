@@ -18,23 +18,20 @@ interface ReelItemProps {
     onVolumeChange: (newVolume: number) => void;
 }
 
-interface AuthorProps {
-    id: string;
-    first_name: string;
-    last_name: string;
-    profile_image: string;
-    username: string;
-}
-interface CommentProps {
-    author: AuthorProps[];
-    content: string;
-    created_at: string;
-    id: string;
-}
 
 export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted, globalVolume, onVolumeChange }: ReelItemProps) {
     const supabase = createClient();
 
+
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    const maxTimeWatched = useRef(0);
+    const loopCount = useRef(0);
+    const viewStartTime = useRef<number | null>(null);
+    const totalDwellTime = useRef(0);
+
+    
     // 2. Create a ref for this specific reel container
     const itemRef = useRef<HTMLDivElement>(null);
     // --- LIKES STATE ---

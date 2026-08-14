@@ -34,7 +34,7 @@
         "public/images/*"
       ],
       "@/lib/*": [
-        "app/api/lib/*"
+        "lib/*"
       ],
       "@/schema/*": [
         "schema/*"

@@ -132,18 +132,34 @@ export default function Video({ src, poster, isReel = false, isPost = false, glo
             className={`relative h-full flex justify-center ${style} overflow-hidden cursor-pointer group ${isReel ? "w-fit bg-transparent items-center" : "h-[85%] bg-black rounded-xl border border-main-border"} ${isPost && "max-h-125 items-center"}`}
             onClick={togglePlay}
         >
-            <video
-                ref={videoRef}
-                src={src}
-                poster={poster}
-                loop
-                playsInline
-                muted={isCurrentlyMuted} 
-                onTimeUpdate={handleTimeUpdate}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-                className={`max-w-full ${isReel ? "w-auto h-auto max-h-[calc(100vh-120px)] sm:max-w-[450px]" : "w-full h-fit object-contain"}`}
-            />
+            {
+                !isReel ?
+                <video
+                    ref={videoRef}
+                    src={src}
+                    poster={poster}
+                    loop
+                    playsInline
+                    muted={isCurrentlyMuted} 
+                    onTimeUpdate={handleTimeUpdate}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
+                    className={`max-w-full ${isReel ? "w-auto h-auto max-h-[calc(100vh-120px)] sm:max-w-[450px]" : "w-full h-fit object-contain"}`}
+                />
+                :
+                <video
+                    ref={videoRef}
+                    src={src}
+                    poster={poster}
+                    loop
+                    playsInline
+                    muted={isCurrentlyMuted} 
+                    onTimeUpdate={handleTimeUpdate}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
+                    className={`max-w-full ${isReel ? "w-auto h-auto max-h-[calc(100vh-120px)] sm:max-w-[450px]" : "w-full h-fit object-contain"}`}
+                />
+            }
 
             {!isPlaying && (
                 <div className={`absolute inset-0 flex items-center justify-center ${isReel ? "bg-black/10" : "bg-black/20"} transition-opacity`}>

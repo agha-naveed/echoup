@@ -4,6 +4,7 @@ import { createClient } from "@/utils/supabase/client";
 import { AiOutlineLoading3Quarters } from "react-icons/ai";
 import ReelItem from "./ReelItem";
 import { useUser } from "../context/UserContext";
+import { fetchRankedFeed, getRecentUserHistory } from "@/lib/api/reel-engine";
 
 
 interface ReelsFeedProps {
@@ -12,15 +13,17 @@ interface ReelsFeedProps {
 
 export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
 
+    const supabase = createClient()
+    const user = useUser();
+
     const [isGlobalMuted, setIsGlobalMuted] = useState(true);
     const [globalVolume, setGlobalVolume] = useState(1);
 
     const [reels, setReels] = useState<any[]>([]);
     const [currentUser, setCurrentUser] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
-    
-    const supabase = createClient()
-    const user = useUser();
+
+    const [page, setPage] = useState(0);
 
     useEffect(() => {
         const fetchReelsData = async () => {
@@ -85,7 +88,39 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
     }
 
     
-    
+    const loadMoreReels = async () => {
+        // Fetch raw next 10 reels from Supabase
+        const { data: rawReels, error } = await supabase
+            .from("reels") // (or "posts", depending on your table name)
+            .select("*")
+            .range(page * 10, (page + 1) * 10 - 1)
+            .order("created_at", { ascending: false });
+
+        // FIX: Handle the 'possibly null' error
+        if (error || !rawReels || rawReels.length === 0) {
+            console.log("No more reels to fetch or database error.");
+            return;
+        }
+
+        const candidateIds = rawReels.map(r => r.id);
+        
+        // Use the mock history until we build the real tracker
+        const recentHistory = getRecentUserHistory(); 
+
+        // Fetch AI rankings
+        const rankedResult = await fetchRankedFeed(recentHistory, candidateIds);
+
+        // FIX: Explicitly type the 'ranked' parameter
+        const sortedReels = rankedResult.map((ranked: { reel_id: string, score: number }) => 
+            rawReels.find(r => r.id === ranked.reel_id)
+        ).filter(Boolean); // filter(Boolean) removes any undefined values
+
+        // Update UI and increment page for the next scroll
+        setReels(prev => [...prev, ...sortedReels]);
+        setPage(prev => prev + 1);
+    };
+
+
     return (
         <div className="w-full h-full overflow-y-auto snap-y snap-mandatory relative custom-scroll-hidden">
             {reels.map((reel) => (
