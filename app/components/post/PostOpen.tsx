@@ -11,7 +11,7 @@ import { PiGif } from 'react-icons/pi';
 import { IoIosArrowDown } from 'react-icons/io';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { AiOutlineLoading3Quarters } from "react-icons/ai";
-import Video from './CustomVideoPlayer';
+import Video from '@/components/CustomVideoPlayer';
 import { createClient } from "@/utils/supabase/client";
 import { useUser } from '@/context/UserContext';
 

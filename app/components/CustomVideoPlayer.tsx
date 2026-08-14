@@ -9,8 +9,8 @@ interface VideoPlayerProps {
     isReel?: boolean; 
     isPost?: boolean;
     globalMuted?: boolean; 
-    maxTimeWatched: any;
-    loopCount: any;
+    maxTimeWatched?: any;
+    loopCount?: any;
     onToggleMuted?: () => void; 
     globalVolume?: number;
     onVolumeChange?: (newVolume: number) => void;
@@ -99,10 +99,12 @@ export default function Video({ src, poster, isReel = false, isPost = false, glo
             const total = videoRef.current.duration;
             setProgress((current / total) * 100);
 
-            maxTimeWatched.current = Math.max(
-                maxTimeWatched.current, 
-                videoRef.current.currentTime
-            );
+            if(maxTimeWatched) {
+                maxTimeWatched.current = Math.max(
+                    maxTimeWatched.current, 
+                    videoRef.current.currentTime
+                );
+            }
         }
     };
 
@@ -167,7 +169,9 @@ export default function Video({ src, poster, isReel = false, isPost = false, glo
 
                     // 2. TRACK LOOPS
                     onEnded={() => {
-                        loopCount.current += 1;
+                        if(loopCount)
+                            loopCount.current += 1;
+                        
                         if (videoRef.current) {
                             videoRef.current.currentTime = 0; // Reset to start
                             videoRef.current.play();          // Play again

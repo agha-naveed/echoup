@@ -11,8 +11,8 @@ import { createClient } from "@/utils/supabase/client";
 import { useUser } from "../../context/UserContext";
 
 const CreatePost = () => {
-    const router = useRouter();
     const supabase = createClient();
+    const router = useRouter();
     const { user: currentUser } = useUser();
 
     const [isFocus, setIsFocus] = useState(false);
@@ -201,11 +201,20 @@ const CreatePost = () => {
                     `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/video/upload`,
                     formData
                 );
-                uploadedVideoUrl = response.data.secure_url;
+                uploadedVideoUrl = await response.data.secure_url;
+
+                console.log(uploadedVideoUrl)
             }
 
+            console.log({
+                    content: text,
+                    image_url: uploadedImageUrls,
+                    video_url: uploadedVideoUrl,
+                    is_reel: isReel,
+                    author_id: currentUser.id
+                })
             // 2. Insert Post directly into Supabase
-            const { error: insertError } = await supabase
+            const { data: insertedData, error: insertError } = await supabase
                 .from("posts")
                 .insert({
                     content: text,
@@ -213,7 +222,10 @@ const CreatePost = () => {
                     video_url: uploadedVideoUrl,
                     is_reel: isReel,
                     author_id: currentUser.id
-                });
+                }).select();
+
+                console.log("Supabase Success Data: ", insertedData);
+                console.log("Error: ", insertError);
 
             if (insertError) throw insertError;
 
@@ -236,7 +248,7 @@ const CreatePost = () => {
 
     return (
         <div ref={containerRef}
-        tabIndex={-1} className={`flex flex-col gap-2 px-5 py-3 bg-primary w-full rounded-xl text-foreground/80 border transition-all ${isFocus ? "border-foreground/40 shadow-[0_2px_15px_#a3a3a334]" : "border-main-border"}`}
+        tabIndex={-1} className={`flex flex-col gap-2 relative overflow-hidden px-5 py-3 bg-primary w-full rounded-xl text-foreground/80 border transition-all ${isFocus ? "border-foreground/40 shadow-[0_2px_15px_#a3a3a334]" : "border-main-border"}`}
             onFocus={() => setIsFocus(true)}
             onBlur={(e) => {
                 // If the new focus is still inside the container, do nothing
@@ -246,7 +258,7 @@ const CreatePost = () => {
                 setIsFocus(false);
             }}
         >
-
+            
             {errorMsg && (
                 <div className="text-red-400 text-sm font-medium px-2 pb-1">
                     {errorMsg}
