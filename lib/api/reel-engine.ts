@@ -74,13 +74,22 @@ export const getRecentUserHistory = async (userId: string | undefined): Promise<
  */
 export const fetchRankedFeed = async (
     userHistory: ReelInteraction[], 
-    candidateReels: string[]
+    candidateReels: string[],
+    targetReelId?: string | null
 ): Promise<{ reel_id: string, score: number }[]> => {
     
     // 1. If there are no candidate reels to rank, exit early
     if (candidateReels.length === 0) {
         return [];
     }
+
+    const formattedHistory = userHistory.map(interaction => [
+        interaction.watch_pct,
+        interaction.loop_count,
+        interaction.liked,
+        interaction.commented,
+        interaction.dwell_time
+    ]);
 
     try {
         const response = await fetch("http://localhost:8000/api/reels/rank", {
@@ -89,8 +98,9 @@ export const fetchRankedFeed = async (
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                user_history: userHistory,
-                candidate_reels: candidateReels
+                history: formattedHistory,
+                candidate_ids: candidateReels,
+                target_reel_id: targetReelId || null
             }),
         });
 
@@ -102,7 +112,7 @@ export const fetchRankedFeed = async (
 
         // 3. Parse and return the sorted data
         const data = await response.json();
-        return data.ranked_feed;
+        return data;
 
     } catch (error) {
         console.error("AI Engine offline or failed. Falling back to chronological order.", error);

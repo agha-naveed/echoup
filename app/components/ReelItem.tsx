@@ -22,6 +22,7 @@ interface ReelItemProps {
 export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted, globalVolume, onVolumeChange }: ReelItemProps) {
     const supabase = createClient();
 
+    const [isVideoLoaded, setIsVideoLoaded] = useState(false);
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -389,11 +390,19 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
 
                 {/* THE VIDEO PLAYER */}
                 <div className="relative w-fit h-full flex flex-col justify-center overflow-hidden sm:rounded-xl bg-black shadow-[0_0_20px_rgba(0,0,0,0.5)] z-10">
+                    {!isVideoLoaded && (
+                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-gray-900 animate-pulse">
+                            {/* Pulsing Placeholder elements */}
+                            <div className="w-16 h-16 bg-gray-800 rounded-full mb-4"></div>
+                            <div className="w-32 h-4 bg-gray-800 rounded"></div>
+                        </div>
+                    )}
                     <Video src={reel.video_url} isReel={true} globalMuted={globalMuted} onToggleMuted={onToggleMuted} 
                     globalVolume={globalVolume}
                     onVolumeChange={onVolumeChange}
                     maxTimeWatched={maxTimeWatched}
                     loopCount={loopCount}
+                    setIsVideoLoaded={setIsVideoLoaded}
                     />
 
                     <div className="absolute bottom-0 left-0 w-full pointer-events-none flex flex-col justify-end pb-4 px-3 sm:px-4 z-20">

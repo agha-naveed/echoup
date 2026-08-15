@@ -229,6 +229,18 @@ const CreatePost = () => {
 
             if (insertError) throw insertError;
 
+            if (isReel && uploadedVideoUrl && insertedData && insertedData.length > 0) {
+                try {
+                    await axios.post("http://127.0.0.1:8000/api/reels/process_video", {
+                        post_id: insertedData[0].id,
+                        video_url: uploadedVideoUrl
+                    });
+                } catch (aiError) {
+                    console.error("Failed to trigger AI processing:", aiError);
+                    // We don't throw here because the post was still successfully created!
+                }
+            }
+
             // 3. Reset UI state on success
             if (contentRef.current) contentRef.current.innerText = "";
             setIsEmpty(true);
