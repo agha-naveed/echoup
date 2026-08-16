@@ -2,6 +2,7 @@
 import React, { useRef, useState, useEffect } from "react";
 import { FaPlay } from "react-icons/fa";
 import { IoVolumeHigh, IoVolumeMute } from "react-icons/io5";
+import Hls from "hls.js";
 
 interface VideoPlayerProps {
     src: string;
@@ -19,7 +20,10 @@ interface VideoPlayerProps {
     isNearScreen?: boolean;
 }
 
-export default function Video({ src, poster, isReel = false, isPost = false, globalMuted, onToggleMuted, globalVolume, onVolumeChange, style, maxTimeWatched, loopCount, setIsVideoLoaded, isNearScreen }: VideoPlayerProps) {
+export default function Video({
+    src, poster, isReel = false, isPost = false, globalMuted, onToggleMuted, globalVolume, onVolumeChange, style, maxTimeWatched, loopCount, setIsVideoLoaded, isNearScreen
+}: VideoPlayerProps) {
+
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -135,6 +139,45 @@ export default function Video({ src, poster, isReel = false, isPost = false, glo
         if (containerRef.current) observer.observe(containerRef.current);
         return () => observer.disconnect();
     }, []);
+
+
+    // --- NEW: THE HLS ENGINE ---
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video || !src) return;
+
+        let hls: Hls;
+
+        // 1. If the browser supports HLS.js (Chrome, Firefox, Android)
+        if (Hls.isSupported() && src.includes(".m3u8")) {
+            hls = new Hls({
+                // Pro-Tip: Limit how much of the video it buffers ahead of time!
+                maxMaxBufferLength: 10, // Only download 10 seconds ahead
+            });
+            
+            hls.loadSource(src);
+            hls.attachMedia(video);
+            
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                if (setIsVideoLoaded) setIsVideoLoaded(true);
+            });
+        } 
+        // 2. If the browser natively supports HLS (iPhones / Safari)
+        else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            video.src = src;
+            video.addEventListener('loadedmetadata', () => {
+                if (setIsVideoLoaded) setIsVideoLoaded(true);
+            });
+        } 
+        // 3. Fallback for standard MP4s
+        else {
+            video.src = src;
+        }
+
+        return () => {
+            if (hls) hls.destroy(); // Clean up memory when user scrolls away
+        };
+    }, [src, setIsVideoLoaded]);
 
     
     return (

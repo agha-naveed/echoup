@@ -38,28 +38,33 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
         const startRange = 5 + ((page - 1) * 3);
         const endRange = startRange + 2;
 
+        console.log("before fetching from posts")
         // Fetch raw next 10 reels from Supabase
-        const { data: rawReels, error } = await supabase
-            .from("posts") 
-            .select(`
-                    id,
-                    content,
-                    video_url,
-                    created_at,
-                    author:users ( id, username, first_name, last_name, profile_image ),
-                    likes ( user_id ),
-                    like_count,
-                    comment_count
-                `)
-            .range(startRange, endRange)
-            .order("created_at", { ascending: false }).eq("is_reel", true);
+        try {
+            const { data: rawReels, error } = await supabase
+                .from("posts") 
+                .select(`
+                        id,
+                        content,
+                        video_url,
+                        created_at,
+                        author:users ( id, username, first_name, last_name, profile_image ),
+                        likes ( user_id ),
+                        like_count,
+                        comment_count
+                    `)
+                .range(startRange, endRange)
+                .order("created_at", { ascending: false }).eq("is_reel", true);
 
-        if (error || !rawReels || rawReels.length === 0) {
-            console.log("No more reels to fetch or database error.");
-            setHasMore(false);
-            setIsFetching(false);
-            return;
-        }
+                console.log("fetched from posts")
+
+            if (error || !rawReels || rawReels.length === 0) {
+                console.log("No more reels to fetch or database error.");
+                setHasMore(false);
+                setIsFetching(false);
+                return;
+            }
+        
 
         const candidateIds = rawReels.map(r => r.id);
         
@@ -69,8 +74,12 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
         // --- NEW: Get the last watched video's ID ---
         const targetReelId = reels.length > 0 ? reels[reels.length - 1].id : null;
 
+        console.log("before fetchRanedFeed")
         // Fetch AI rankings
         const rankedResult = await fetchRankedFeed(recentHistory, candidateIds, targetReelId);
+        console.log("After fetchRanedFeed")
+        console.log(rankedResult)
+        
 
         const sortedReels = rankedResult.map((ranked: { reel_id: string, score: number }) => 
             rawReels.find(r => r.id === ranked.reel_id)
@@ -100,6 +109,9 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
                 // Nudge the scroll slightly to re-trigger the observer
                 if (scrollContainer) scrollContainer.scrollTop += 1; 
             }, 100);
+        }
+        } catch(err) {
+            console.log(err)
         }
     };
 

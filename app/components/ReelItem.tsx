@@ -33,6 +33,7 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
     const totalDwellTime = useRef(0);
 
     const [isNearScreen, setIsNearScreen] = useState(false);
+    const [shouldLoadStream, setShouldLoadStream] = useState(false);
 
 
     // 2. Create a ref for this specific reel container
@@ -92,30 +93,53 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
         totalDwellTime.current = 0;
 
         // Background save
-        supabase.from("reel_interactions").insert(payload).then(({ error }) => {
+        supabase.from("reel_interactions").upsert(payload, { onConflict: 'user_id, reel_id' }).then(({ error }) => {
             if (error) console.error("Telemetry error:", error);
         });
     };
 
-    // --- TELEMETRY & URL OBSERVER ---
+    // ==========================================
+    // 1. THE HLS MEMORY OBSERVER (The 2500px Zone)
+    // ==========================================
     useEffect(() => {
-        const observer = new IntersectionObserver(
+        const memoryObserver = new IntersectionObserver(
+            (entries) => {
+                const [entry] = entries;
+                if (entry.isIntersecting) {
+                    setIsNearScreen(true);
+                    setShouldLoadStream(true);
+                } else {
+                    setIsNearScreen(false);
+                    setShouldLoadStream(false);
+                }
+            },
+            { threshold: 0, rootMargin: "2500px 0px" } 
+        );
+
+        if (itemRef.current) memoryObserver.observe(itemRef.current);
+        return () => memoryObserver.disconnect();
+    }, []);
+
+    // ==========================================
+    // 2. THE TELEMETRY & URL OBSERVER (The 0.6 Threshold)
+    // ==========================================
+    useEffect(() => {
+        const telemetryObserver = new IntersectionObserver(
             (entries) => {
                 const [entry] = entries;
 
                 if (entry.isIntersecting) {
-                    setIsNearScreen(true);
-                    // 1. SILENTLY UPDATE BROWSER URL
+                    // 1. Update URL & Play
                     window.history.replaceState(null, '', `/reels/${reel.id}`);
-
                     videoRef.current?.play().catch(() => {});
                     
-                    // 2. START THE DWELL TIME STOPWATCH
+                    // 2. START THE STOPWATCH
                     viewStartTime.current = Date.now();
                 } else {
+                    // 3. Pause
                     videoRef.current?.pause();
-                    setIsNearScreen(false);
-                    // 3. STOP THE STOPWATCH AND SAVE
+                    
+                    // 4. STOP THE STOPWATCH AND SAVE
                     if (viewStartTime.current) {
                         const dwellInSeconds = (Date.now() - viewStartTime.current) / 1000;
                         totalDwellTime.current += dwellInSeconds;
@@ -125,18 +149,17 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                     }
                 }
             },
-            { threshold: 0.6 } // Matches your Video component's threshold
+            { threshold: 0.6 } // Strict viewport threshold!
         );
 
-        if (itemRef.current) observer.observe(itemRef.current);
+        if (itemRef.current) telemetryObserver.observe(itemRef.current);
 
         return () => {
-            // Cleanup save if they close the tab
             if (viewStartTime.current) {
                 totalDwellTime.current += (Date.now() - viewStartTime.current) / 1000;
                 saveInteractionData();
             }
-            observer.disconnect();
+            telemetryObserver.disconnect();
         };
     }, [reel.id, isLiked, hasCommented]);
 
@@ -391,6 +414,12 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
         }
     };
 
+    // Helper to transform MP4 to HLS Stream
+    const getHlsUrl = (url: string) => {
+        if (!url) return "";
+        return url.replace("/upload/", "/upload/sp_auto/").replace(".mp4", ".m3u8");
+    };
+
     return (
         <div ref={itemRef} className="relative w-full h-full snap-start flex justify-center items-center sm:py-1 overflow-hidden">
             <div className="flex flex-row items-center justify-center w-full sm:w-auto h-full sm:h-auto max-h-full">
@@ -404,13 +433,14 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                             <div className="w-32 h-4 bg-gray-800 rounded"></div>
                         </div>
                     )}
-                    <Video src={reel.video_url} isReel={true} globalMuted={globalMuted} onToggleMuted={onToggleMuted} 
-                    globalVolume={globalVolume}
-                    onVolumeChange={onVolumeChange}
-                    maxTimeWatched={maxTimeWatched}
-                    loopCount={loopCount}
-                    setIsVideoLoaded={setIsVideoLoaded}
-                    isNearScreen={isNearScreen}
+                    <Video src={shouldLoadStream ? getHlsUrl(reel.video_url) : ""}
+                        isReel={true} globalMuted={globalMuted} onToggleMuted={onToggleMuted} 
+                        globalVolume={globalVolume}
+                        onVolumeChange={onVolumeChange}
+                        maxTimeWatched={maxTimeWatched}
+                        loopCount={loopCount}
+                        setIsVideoLoaded={setIsVideoLoaded}
+                        isNearScreen={isNearScreen}
                     />
 
                     <div className="absolute bottom-0 left-0 w-full pointer-events-none flex flex-col justify-end pb-4 px-3 sm:px-4 z-20">
