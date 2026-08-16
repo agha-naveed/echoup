@@ -1,5 +1,5 @@
 "use client"
-import { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { FaPlay } from "react-icons/fa";
 import { IoVolumeHigh, IoVolumeMute } from "react-icons/io5";
 
@@ -9,8 +9,8 @@ interface VideoPlayerProps {
     isReel?: boolean; 
     isPost?: boolean;
     globalMuted?: boolean; 
-    maxTimeWatched?: any;
-    loopCount?: any;
+    maxTimeWatched?: React.MutableRefObject<number>;
+    loopCount?: React.MutableRefObject<number>;
     onToggleMuted?: () => void; 
     globalVolume?: number;
     onVolumeChange?: (newVolume: number) => void;
@@ -148,7 +148,7 @@ export default function Video({ src, poster, isReel = false, isPost = false, glo
                     ref={videoRef}
                     src={src}
                     poster={poster}
-                    loop
+                    // loop
                     playsInline
                     muted={isCurrentlyMuted} 
                     onTimeUpdate={handleTimeUpdate}
@@ -163,6 +163,7 @@ export default function Video({ src, poster, isReel = false, isPost = false, glo
                     poster={poster}
                     playsInline
                     muted={isCurrentlyMuted} 
+                    // loop
                     onLoadedData={() => setIsVideoLoaded(true)}
                     onTimeUpdate={handleTimeUpdate}
                     onPlay={() => setIsPlaying(true)}

@@ -104,10 +104,13 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                 if (entry.isIntersecting) {
                     // 1. SILENTLY UPDATE BROWSER URL
                     window.history.replaceState(null, '', `/reels/${reel.id}`);
+
+                    videoRef.current?.play().catch(() => {});
                     
                     // 2. START THE DWELL TIME STOPWATCH
                     viewStartTime.current = Date.now();
                 } else {
+                    videoRef.current?.pause();
                     // 3. STOP THE STOPWATCH AND SAVE
                     if (viewStartTime.current) {
                         const dwellInSeconds = (Date.now() - viewStartTime.current) / 1000;

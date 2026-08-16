@@ -118,12 +118,14 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
                     const otherReels = data.filter(reel => reel.id !== initialReelId);
                     
                     if (targetReel) {
-                        setReels([targetReel, ...otherReels]);
+                        const shuffledOthers = otherReels.sort(() => Math.random() - 0.5);
+                        setReels([targetReel, ...shuffledOthers]);
                     } else {
-                        setReels(data); 
+                        setReels(data.sort(() => Math.random() - 0.5)); 
                     }
                 } else {
-                    setReels(data); 
+                    const shuffledData = [...data].sort(() => Math.random() - 0.5);
+                    setReels(shuffledData);
                 }
             }
 
