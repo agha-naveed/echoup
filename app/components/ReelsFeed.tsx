@@ -76,6 +76,7 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
             rawReels.find(r => r.id === ranked.reel_id)
         ).filter(Boolean); 
 
+        let addedCount = 0;
         // Update UI and increment page
         // setReels(prev => [...prev, ...sortedReels]);
         setReels(prev => {
@@ -83,10 +84,23 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
             const uniqueReels = sortedReels.filter((newReel:any) => 
                 !prev.some(existingReel => existingReel.id === newReel.id)
             );
+            addedCount = uniqueReels.length;
+            console.log(`📍 CHECKPOINT 6: Added ${addedCount} new unique videos to the screen!`);
             return [...prev, ...uniqueReels];
         });
         setPage(prev => prev + 1);
         setIsFetching(false);
+
+        if (addedCount === 0 && rawReels.length > 0) {
+            console.log("⚠️ ALL DUPLICATES FOUND. Instantly fetching the next page...");
+            
+            // We wrap it in a tiny timeout to let the React state (page + 1) settle first
+            setTimeout(() => {
+                const scrollContainer = document.querySelector('.custom-scroll-hidden');
+                // Nudge the scroll slightly to re-trigger the observer
+                if (scrollContainer) scrollContainer.scrollTop += 1; 
+            }, 100);
+        }
     };
 
     // 3. ALL USE-EFFECTS GO HERE

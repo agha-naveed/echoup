@@ -16,9 +16,10 @@ interface VideoPlayerProps {
     onVolumeChange?: (newVolume: number) => void;
     style?: string;
     setIsVideoLoaded?: any;
+    isNearScreen?: boolean;
 }
 
-export default function Video({ src, poster, isReel = false, isPost = false, globalMuted, onToggleMuted, globalVolume, onVolumeChange, style, maxTimeWatched, loopCount, setIsVideoLoaded }: VideoPlayerProps) {
+export default function Video({ src, poster, isReel = false, isPost = false, globalMuted, onToggleMuted, globalVolume, onVolumeChange, style, maxTimeWatched, loopCount, setIsVideoLoaded, isNearScreen }: VideoPlayerProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -159,12 +160,12 @@ export default function Video({ src, poster, isReel = false, isPost = false, glo
                 :
                 <video
                     ref={videoRef}
-                    src={src}
+                    src={isNearScreen ? src : ""}
                     poster={poster}
                     playsInline
                     muted={isCurrentlyMuted} 
-                    // loop
                     onLoadedData={() => setIsVideoLoaded(true)}
+                    preload="metadata"
                     onTimeUpdate={handleTimeUpdate}
                     onPlay={() => setIsPlaying(true)}
                     onPause={() => setIsPlaying(false)}

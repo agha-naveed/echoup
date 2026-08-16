@@ -32,6 +32,8 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
     const viewStartTime = useRef<number | null>(null);
     const totalDwellTime = useRef(0);
 
+    const [isNearScreen, setIsNearScreen] = useState(false);
+
 
     // 2. Create a ref for this specific reel container
     const itemRef = useRef<HTMLDivElement>(null);
@@ -102,6 +104,7 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                 const [entry] = entries;
 
                 if (entry.isIntersecting) {
+                    setIsNearScreen(true);
                     // 1. SILENTLY UPDATE BROWSER URL
                     window.history.replaceState(null, '', `/reels/${reel.id}`);
 
@@ -111,6 +114,7 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                     viewStartTime.current = Date.now();
                 } else {
                     videoRef.current?.pause();
+                    setIsNearScreen(false);
                     // 3. STOP THE STOPWATCH AND SAVE
                     if (viewStartTime.current) {
                         const dwellInSeconds = (Date.now() - viewStartTime.current) / 1000;
@@ -406,6 +410,7 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                     maxTimeWatched={maxTimeWatched}
                     loopCount={loopCount}
                     setIsVideoLoaded={setIsVideoLoaded}
+                    isNearScreen={isNearScreen}
                     />
 
                     <div className="absolute bottom-0 left-0 w-full pointer-events-none flex flex-col justify-end pb-4 px-3 sm:px-4 z-20">
