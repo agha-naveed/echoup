@@ -435,7 +435,6 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
                     )}
                     <Video src={shouldLoadStream ? getHlsUrl(reel.video_url) : ""}
                         isReel={true} globalMuted={globalMuted} onToggleMuted={onToggleMuted} 
-                        subtitlesVtt={reel.subtitles_vtt}
                         globalVolume={globalVolume}
                         onVolumeChange={onVolumeChange}
                         maxTimeWatched={maxTimeWatched}

@@ -18,11 +18,10 @@ interface VideoPlayerProps {
     style?: string;
     setIsVideoLoaded?: any;
     isNearScreen?: boolean;
-    subtitlesVtt?: string;
 }
 
 export default function Video({
-    src, poster, isReel = false, isPost = false, globalMuted, onToggleMuted, globalVolume, onVolumeChange, style, maxTimeWatched, loopCount, setIsVideoLoaded, isNearScreen, subtitlesVtt
+    src, poster, isReel = false, isPost = false, globalMuted, onToggleMuted, globalVolume, onVolumeChange, style, maxTimeWatched, loopCount, setIsVideoLoaded, isNearScreen
 }: VideoPlayerProps) {
 
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -38,23 +37,6 @@ export default function Video({
     // Determine which states we are actually using (Global vs Local)
     const isCurrentlyMuted = globalMuted !== undefined ? globalMuted : localMuted;
     const currentVolume = globalVolume !== undefined ? globalVolume : localVolume;
-
-    const [subtitleBlobUrl, setSubtitleBlobUrl] = useState<string | null>(null);
-
-    useEffect(() => {
-        if (!subtitlesVtt) {
-            setSubtitleBlobUrl(null);
-            return;
-        }
-
-        const blob = new Blob([subtitlesVtt], { type: "text/vtt" });
-        const url = URL.createObjectURL(blob);
-        setSubtitleBlobUrl(url);
-
-        return () => {
-            URL.revokeObjectURL(url); // Clean up memory when reel unmounts
-        };
-    }, [subtitlesVtt]);
 
     // Play/Pause Logic
     const togglePlay = () => {
@@ -221,6 +203,7 @@ export default function Video({
                 :
                 <video
                     ref={videoRef}
+                    src={isNearScreen ? src : ""}
                     poster={poster}
                     playsInline
                     muted={isCurrentlyMuted} 
@@ -230,26 +213,18 @@ export default function Video({
                     onPlay={() => setIsPlaying(true)}
                     onPause={() => setIsPlaying(false)}
                     className={`max-w-full w-auto h-auto max-h-[calc(100vh-120px)] sm:max-w-[450px]`}
+
+                    // 2. TRACK LOOPS
                     onEnded={() => {
                         if(loopCount)
                             loopCount.current += 1;
                         
                         if (videoRef.current) {
-                            videoRef.current.currentTime = 0;
-                            videoRef.current.play();          
+                            videoRef.current.currentTime = 0; // Reset to start
+                            videoRef.current.play();          // Play again
                         }
                     }}
-                >
-                    {subtitleBlobUrl && (
-                        <track
-                            src={subtitleBlobUrl}
-                            kind="subtitles"
-                            srcLang="en"
-                            label="English"
-                            default
-                        />
-                    )}
-                </video>
+                />
             }
 
             {!isPlaying && (

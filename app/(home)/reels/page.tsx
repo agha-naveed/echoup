@@ -1,34 +1,55 @@
 // app/reels/page.tsx
 import { redirect } from "next/navigation";
-import { createClient } from "@/utils/supabase/client"; // Adjust to your path
+import { createClient } from "@/utils/supabase/server"; // <-- MUST be /server for Server Components
+import axios from "axios";
 
-// Force Next.js to run this fresh every single time someone visits
 export const dynamic = "force-dynamic";
 
 export default async function ReelsIndexPage() {
-    const supabase = createClient()
-    // 1. Fetch a pool of reels (e.g., the 50 most recent ones to keep it fresh)
-    const { data: reelsPool, error } = await supabase
-        .from("posts") // (or "posts", depending on your schema)
-        .select("id")
-        .limit(50).eq("is_reel", true);
+    const supabase = await createClient();
+    
+    // 1. Get the authenticated user
+    const { data: { user } } = await supabase.auth.getUser();
 
-        console.log(error, reelsPool)
+    let targetReelId = null;
 
-    // 2. Fallback if the database is empty
-    if (error || !reelsPool || reelsPool.length === 0) {
-        return (
-            <div className="h-screen w-screen bg-black flex items-center justify-center text-white">
-                <p>No reels available right now.</p>
-            </div>
-        );
+    if (user) {
+        // 2A. If logged in, ask FastAPI for the personalized AI feed
+        try {
+            const res = await axios.post(process.env.BACKEND_URL+"/reels/feed", {
+                user_id: user.id,
+                limit: 10
+            });
+            
+            if (res.data?.reels && res.data.reels.length > 0) {
+                targetReelId = res.data.reels[0].id;
+            }
+        } catch (err) {
+            console.error("FastAPI unreachable, falling back to database...", err);
+        }
     }
 
-    // 3. Pick a completely random reel from the pool
-    const randomIndex = Math.floor(Math.random() * reelsPool.length);
-    const randomReel = reelsPool[randomIndex];
-    console.log(randomReel)
+    // 2B. Fallback if user is logged out or FastAPI fails
+    if (!targetReelId) {
+        const { data: reelsPool, error } = await supabase
+            .from("posts")
+            .select("id")
+            .eq("is_reel", true)
+            .limit(50);
 
-    // 4. Instantly redirect to that specific random reel's URL!
-    redirect(`/reels/${randomReel.id}`);
+        if (error || !reelsPool || reelsPool.length === 0) {
+            return (
+                <div className="h-screen w-screen bg-black flex items-center justify-center text-white">
+                    <p>No reels available right now.</p>
+                </div>
+            );
+        }
+        
+        // Pick a random reel for unauthenticated users
+        const randomIndex = Math.floor(Math.random() * reelsPool.length);
+        targetReelId = reelsPool[randomIndex].id;
+    }
+
+    // 3. Instantly redirect to the highest-ranked (or random) reel
+    redirect(`/reels/${targetReelId}`);
 }
