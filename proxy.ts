@@ -1,53 +1,48 @@
-import { createServerClient } from '@supabase/ssr'
-import { NextResponse, type NextRequest } from 'next/server'
+import { NextResponse, type NextRequest } from "next/server";
+import { getFreshSession } from "./lib/session";
+import { SESSION_COOKIE, sessionCookieOptions } from "./lib/session-config";
 
 export async function proxy(request: NextRequest) {
-    let supabaseResponse = NextResponse.next({ request });
-
-    const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-            cookies: {
-                getAll() {
-                    return request.cookies.getAll()
-                },
-                setAll(cookiesToSet) {
-                    cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-                    supabaseResponse = NextResponse.next({ request })
-                    cookiesToSet.forEach(({ name, value, options }) =>
-                        supabaseResponse.cookies.set(name, value, options)
-                    )
-                },
-            },
-        }
-    )
-
-    const { data: { user } } = await supabase.auth.getUser();
     const { pathname } = request.nextUrl;
 
-    // Standard public paths
+    // Session lives in Redis. Look it up (this also resets the 30 min idle
+    // timer and refreshes the Supabase access token if it's about to expire).
+    const sid = request.cookies.get(SESSION_COOKIE)?.value;
+    const session = sid ? await getFreshSession(sid) : null;
+
     const publicPaths = [
-        "/account", 
-        "/account/signup", 
-        "/auth/callback", 
-        "/favicon.ico"
+        "/account",
+        "/account/signup",
+        "/auth/callback",
+        "/api/auth", // login / signup / logout / session handle auth themselves
+        "/favicon.ico",
     ];
-    
-    // Check if it's a standard public path OR a user profile page (starts with /@)
-    const isPublicPath = publicPaths.some((path) => pathname.startsWith(path)) || pathname.startsWith("/@");
+    const isPublicPath =
+        publicPaths.some((path) => pathname.startsWith(path)) ||
+        pathname.startsWith("/@");
 
-    // If no user and route is private, redirect to login
-    if (!user && !isPublicPath) {
-        return NextResponse.redirect(new URL('/account', request.url));
+    let response: NextResponse;
+    if (!session && !isPublicPath) {
+        response = NextResponse.redirect(new URL("/account", request.url));
+    } else if (session && pathname === "/account") {
+        response = NextResponse.redirect(new URL("/", request.url));
+    } else {
+        response = NextResponse.next();
     }
 
-    // If logged in and on the login page, skip to feed
-    if (user && pathname === "/account") {
-        return NextResponse.redirect(new URL('/', request.url));
+    // Routes that set/clear the cookie themselves must not be overridden here.
+    const managesOwnCookie =
+        pathname.startsWith("/api/auth/") && pathname !== "/api/auth/session";
+
+    if (!managesOwnCookie) {
+        if (session && sid) {
+            response.cookies.set(SESSION_COOKIE, sid, sessionCookieOptions); // slide cookie expiry
+        } else if (sid) {
+            response.cookies.delete(SESSION_COOKIE); // stale/expired id
+        }
     }
 
-    return supabaseResponse;
+    return response;
 }
 
 export const config = {

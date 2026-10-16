@@ -1,10 +1,10 @@
 import CreatePost from "@/app/components/post/CreatePost";
 import FeedPage from "@/components/Feed";
-import { createClient } from "@/utils/supabase/server";
+import { createClient, getAuthUser } from "@/utils/supabase/server";
 
 export default async function Page() {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getAuthUser();
 
     let initialPosts = [] as any;
 

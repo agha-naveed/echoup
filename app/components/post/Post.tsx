@@ -269,13 +269,6 @@ export default function Post({ post }: Props) {
     const handleDeletePost = async () => {
 
         try {
-            const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-
-            if (sessionError) {
-                console.error("Auth is broken on this page:", sessionError);
-                return;
-            }
-            
             const { data, error } = await supabase
                 .from("posts") 
                 .delete()

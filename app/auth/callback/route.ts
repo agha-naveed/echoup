@@ -1,33 +1,41 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@/utils/supabase/server'
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createOAuthServerClient } from "@/utils/supabase/oauth-server";
+import { createStatelessClient, toSessionData } from "@/lib/supabase-stateless";
+import { createSession } from "@/lib/session";
+import { SESSION_COOKIE, sessionCookieOptions } from "@/lib/session-config";
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
-  const code = searchParams.get('code')
+  const { searchParams, origin } = new URL(request.url);
+  const code = searchParams.get("code");
 
   if (code) {
-    const supabase = await createClient()
-    
-    const { data: { user }, error } = await supabase.auth.exchangeCodeForSession(code)
-    
-    if (!error && user) {
-        const { data: profile } = await supabase
-            .from('users')
-            .select('username')
-            .eq('id', user.id)
-            .single()
+    // Cookie-based client is needed only to read the PKCE verifier for the exchange.
+    const oauth = await createOAuthServerClient();
+    const { data, error } = await oauth.auth.exchangeCodeForSession(code);
 
-        // 3. The Routing Logic
-        if (!profile?.username) {
-            // New user without a username -> send them to Step 2 of your form
-            return NextResponse.redirect(`${origin}/account/signup?step=2`)
-        } else {
-            // Existing fully setup user -> send them into Echo Up!
-            return NextResponse.redirect(`${origin}/post`)
-        }
+    if (!error && data.session) {
+      // Move the session into Redis and drop every Supabase auth cookie,
+      // so no JWT / refresh token is left in the browser.
+      const sid = await createSession(toSessionData(data.session));
+      const store = await cookies();
+      store
+        .getAll()
+        .filter((c) => c.name.startsWith("sb-") && c.name.includes("-auth-token"))
+        .forEach((c) => store.delete(c.name));
+      store.set(SESSION_COOKIE, sid, sessionCookieOptions);
+
+      const { data: profile } = await createStatelessClient(data.session.access_token)
+        .from("users")
+        .select("username")
+        .eq("id", data.session.user.id)
+        .single();
+
+      return NextResponse.redirect(
+        profile?.username ? `${origin}/` : `${origin}/account/signup?step=2`
+      );
     }
   }
 
-  // If something goes wrong, send them back to login
-  return NextResponse.redirect(`${origin}/account`)
+  return NextResponse.redirect(`${origin}/account`);
 }

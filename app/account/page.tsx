@@ -3,7 +3,8 @@ import logo from "@/images/logo.png"
 import Image from "next/image"
 import Link from "next/link";
 import { useForm } from "react-hook-form"
-import { createClient } from "@/utils/supabase/client";
+import { createOAuthClient } from "@/utils/supabase/oauth-client";
+import { clearAccessTokenCache } from "@/utils/supabase/client";
 import { GoMail } from "react-icons/go";
 import { LuLockKeyhole } from "react-icons/lu";
 import { useEffect, useState } from "react";
@@ -15,7 +16,7 @@ export default function LoginPage() {
     const [isProcessing, setIsProcessing] = useState(false);
     
     const router = useRouter();
-    const supabase = createClient();
+    const supabase = createOAuthClient(); // only used to start Google OAuth
 
     useEffect(() => {
         setIsLoad(true);
@@ -36,17 +37,20 @@ export default function LoginPage() {
         setIsProcessing(true);
 
         try {
-            const { error } = await supabase.auth.signInWithPassword({
-                email: data.email,
-                password: data.password,
+            const res = await fetch("/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: data.email, password: data.password }),
             });
 
-            if (error) {
-                setError("root", { type: "manual", message: "Invalid email or password." });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                setError("root", { type: "manual", message: body.error || "Invalid email or password." });
                 setIsProcessing(false);
                 return;
             }
 
+            clearAccessTokenCache();
             router.push("/");
 
         } catch (error) {

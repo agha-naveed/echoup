@@ -1,6 +1,6 @@
 import FeedPage from "@/components/Feed"; 
 import Image from "next/image"
-import { createClient } from "@/utils/supabase/server";
+import { createClient, getAuthUser } from "@/utils/supabase/server";
 import { notFound } from "next/navigation";
 import ProfileHeader from "@/components/ProfileHeader";
 
@@ -19,7 +19,7 @@ const UserProfilePage = async ({ params }: { params: Promise<{ user: string }> }
     const supabase = await createClient();
 
     // 1. Get the current logged-in user
-    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const authUser = await getAuthUser();
 
     // 2. Fetch the viewed user's profile
     const { data: profile, error: profileError } = await supabase

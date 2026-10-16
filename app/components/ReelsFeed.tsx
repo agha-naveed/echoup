@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { AiOutlineLoading3Quarters } from "react-icons/ai";
 import ReelItem from "./ReelItem";
@@ -13,7 +13,7 @@ interface ReelsFeedProps {
 
 export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
 
-    const supabase = createClient()
+    const supabase = useMemo(() => createClient(), [])
     const user = useUser();
 
     // 1. ALL HOOKS MUST GO HERE AT THE TOP
@@ -41,22 +41,28 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
         console.log("before fetching from posts")
         // Fetch raw next 10 reels from Supabase
         try {
+            // const { data: rawReels, error } = await supabase
+            //     .from("posts") 
+            //     .select(`
+            //             id,
+            //             content,
+            //             video_url,
+            //             created_at,
+            //             author:users ( id, username, first_name, last_name, profile_image ),
+            //             likes ( user_id ),
+            //             like_count,
+            //             comment_count
+            //         `)
+            //     .range(startRange, endRange)
+            //     .order("created_at", { ascending: false }).eq("is_reel", true);
+
+            //     console.log("fetched from posts")
             const { data: rawReels, error } = await supabase
                 .from("posts") 
-                .select(`
-                        id,
-                        content,
-                        video_url,
-                        created_at,
-                        author:users ( id, username, first_name, last_name, profile_image ),
-                        likes ( user_id ),
-                        like_count,
-                        comment_count
-                    `)
-                .range(startRange, endRange)
-                .order("created_at", { ascending: false }).eq("is_reel", true);
+                .select("id") // ONLY ask for the ID, nothing else!
+                .limit(1);
 
-                console.log("fetched from posts")
+            console.log("📍 Fetched from posts! Error status:", error);
 
             if (error || !rawReels || rawReels.length === 0) {
                 console.log("No more reels to fetch or database error.");

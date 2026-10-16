@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
-
-import { createClient } from "@/utils/supabase/client";
+import { createContext, useContext, useState } from "react";
 
 const UserContext = createContext<{
   user: any;
@@ -24,39 +17,9 @@ export function UserProvider({
   children: React.ReactNode;
   initialUser: any;
 }) {
-  const [user, setUser] = useState(initialUser);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const supabase = createClient();
-
-  useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (!session?.user) {
-          setUser(null);
-          setIsLoading(false);
-          return;
-        }
-
-        const { data: profile } = await supabase
-          .from("users")
-          .select(
-            "id, username, first_name, last_name, profile_image"
-          )
-          .eq("id", session.user.id)
-          .single();
-
-        setUser(profile);
-        setIsLoading(false);
-      }
-    );
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
+  // User comes from the Redis-backed session on the server (see getCurrentUser).
+  const [user] = useState(initialUser);
+  const [isLoading] = useState(false);
 
   return (
     <UserContext.Provider value={{ user, isLoading }}>

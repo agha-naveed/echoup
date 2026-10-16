@@ -6,7 +6,7 @@ import { FaRegBell } from "react-icons/fa";
 import { useEffect, useRef, useState } from "react";
 import logo from '@/images/logo.png'
 import Link from "next/link";
-import { createClient } from "@/utils/supabase/client";
+import { createClient, clearAccessTokenCache } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNowStrict } from "date-fns";
 import { toggleFollowState } from "@/actions/follow";
@@ -165,7 +165,8 @@ export default function Navbar() {
     }, []);
 
     const handleLogout = async () => {
-        await supabase.auth.signOut();
+        await fetch("/api/auth/logout", { method: "POST" }); // deletes the Redis session
+        clearAccessTokenCache();
         router.push("/account"); 
         router.refresh(); 
     };

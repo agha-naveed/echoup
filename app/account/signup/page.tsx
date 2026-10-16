@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { signUpFormSchema, type SignUpFormValues } from "@/schema/user";
-import { createClient } from "@/utils/supabase/client";
+import { createClient, clearAccessTokenCache } from "@/utils/supabase/client";
+import { createOAuthClient } from "@/utils/supabase/oauth-client";
 import { GoMail } from "react-icons/go";
 import { LuLockKeyhole } from "react-icons/lu";
 import { ChangeEvent, useEffect, useState, Suspense } from "react";
@@ -44,7 +45,8 @@ function SignupForm() {
     useEffect(() => {
         setIsLoad(true);
         const initializeUser = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
+            const res = await fetch("/api/auth/session", { cache: "no-store" });
+            const user = res.ok ? (await res.json()).user : null;
             if (user) {
                 setAuthUser(user);
                 if (searchParams.get("step") === "2") {
@@ -54,7 +56,7 @@ function SignupForm() {
             }
         };
         initializeUser();
-    }, [searchParams, supabase.auth]);
+    }, [searchParams]);
 
     const {
         register,
@@ -69,7 +71,7 @@ function SignupForm() {
     });
 
     const handleGoogleLogin = async () => {
-        await supabase.auth.signInWithOAuth({
+        await createOAuthClient().auth.signInWithOAuth({
             provider: 'google',
             options: {
                 redirectTo: `${window.location.origin}/auth/callback`,
@@ -198,32 +200,28 @@ function SignupForm() {
 
             } else {
                 // Register Brand New Email/Password User
-                const { data: authData, error: signUpError } = await supabase.auth.signUp({
-                    email: data.email,
-                    password: data.password!,
-                    options: {
-                        data: {
-                            full_name: `${data.firstName} ${data.lastName || ""}`.trim(),
-                            avatar_url: finalProfileImageUrl
-                        }
-                    }
+                const res = await fetch("/api/auth/signup", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        email: data.email,
+                        password: data.password,
+                        firstName: data.firstName,
+                        lastName: data.lastName,
+                        username: data.username,
+                        profileImage: finalProfileImageUrl,
+                        gender: data.gender,
+                        dateOfBirth: formattedDate,
+                    }),
                 });
+                const result = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(result.error || "Signup failed");
 
-                if (signUpError) throw signUpError;
-
-                if (authData.user) {
-                    const { error: updateError } = await supabase
-                        .from("users")
-                        .update({
-                            username: data.username,
-                            profile_image: finalProfileImageUrl,
-                            ...(data.gender && { gender: data.gender }),
-                            ...(formattedDate && { date_of_birth: formattedDate })
-                        })
-                        .eq("id", authData.user.id);
-                    
-                    if (updateError) throw updateError;
+                if (result.needsConfirmation) {
+                    setError("root", { type: "manual", message: "Check your email to confirm your account, then log in." });
+                    return;
                 }
+                clearAccessTokenCache();
             }
 
             // 4. Success -> Redirect to app
@@ -288,7 +286,7 @@ function SignupForm() {
                                         </div>
                                         <button
                                             type="button"
-                                            onClick={async () => { await supabase.auth.signOut(); setAuthUser(null); }}
+                                            onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); clearAccessTokenCache(); setAuthUser(null); }}
                                             className="text-sm text-main-blue transition-colors mt-1 cursor-pointer hover:underline"
                                         >
                                             Not you? Use a different account

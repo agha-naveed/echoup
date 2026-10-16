@@ -4,3 +4,5 @@ supabase==2.31.0
 websockets==15.0.1
 dotenv==0.9.9
 tensorflow==2.21.0
+faster-whisper==1.2.1
+requests==2.33.1
