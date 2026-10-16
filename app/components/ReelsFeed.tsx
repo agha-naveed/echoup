@@ -59,8 +59,18 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
             //     console.log("fetched from posts")
             const { data: rawReels, error } = await supabase
                 .from("posts") 
-                .select("id") // ONLY ask for the ID, nothing else!
-                .limit(1);
+                .select(`
+                    id,
+                    content,
+                    video_url,
+                    subtitles_vtt,
+                    created_at,
+                    author:users ( id, username, first_name, last_name, profile_image ),
+                    likes ( user_id ),
+                    like_count,
+                    comment_count
+                `)
+                .limit(2);
 
             console.log("📍 Fetched from posts! Error status:", error);
 
