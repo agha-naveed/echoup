@@ -70,16 +70,14 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
 
     // --- PUSH DATA TO SUPABASE ---
     const saveInteractionData = async () => {
-        if (totalDwellTime.current < 1 || !currentUser) return; // Ignore accidental fast-scrolls
+        if (totalDwellTime.current < 1 || !currentUser) return;
 
-        // Assuming most reels are around 15-30 seconds if duration isn't perfectly accessible.
-        // If you need exact duration, you can pass it up from the Video component later.
         const assumedDuration = 15.0; 
         const watchPct = Math.min(maxTimeWatched.current / assumedDuration, 1.0);
 
         const payload = {
             user_id: currentUser.id,
-            reel_id: reel.id,
+            reel_id: reel.id, // <-- Revert back to reel_id
             watch_pct: parseFloat(watchPct.toFixed(2)),
             loop_count: loopCount.current,
             liked: isLiked ? 1 : 0,
@@ -92,8 +90,8 @@ export default function ReelItem({ reel, currentUser, globalMuted, onToggleMuted
         loopCount.current = 0;
         totalDwellTime.current = 0;
 
-        // Background save
-        supabase.from("reel_interactions").upsert(payload, { onConflict: 'user_id, reel_id' }).then(({ error }) => {
+        // <-- Revert conflict constraint back to 'user_id, reel_id'
+        supabase.from("reel_interactions").upsert(payload, { onConflict: 'user_id,reel_id' }).then(({ error }) => {
             if (error) console.error("Telemetry error:", error);
         });
     };

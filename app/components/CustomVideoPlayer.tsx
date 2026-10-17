@@ -201,6 +201,7 @@ export default function Video({
                     className={`max-w-full ${isReel ? "w-auto h-auto max-h-[calc(100vh-120px)] sm:max-w-[450px]" : "w-full h-fit object-contain"}`}
                 />
                 :
+                src &&
                 <video
                     ref={videoRef}
                     src={isNearScreen ? src : ""}

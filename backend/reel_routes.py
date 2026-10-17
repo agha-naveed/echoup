@@ -57,6 +57,7 @@ class UserFeedRequest(BaseModel):
     user_id: str
     limit: Optional[int] = 10
 
+
 @router.post("/feed")
 def get_personalized_feed(request: UserFeedRequest):
     """
@@ -78,7 +79,7 @@ def get_personalized_feed(request: UserFeedRequest):
 
     # B. Fetch the user's last 10 interactions from reel_interactions
     interactions_res = supabase.table("reel_interactions") \
-        .select("post_id, watch_pct, loop_count, liked, commented, dwell_time, created_at") \
+        .select("reel_id, watch_pct, loop_count, liked, commented, dwell_time, created_at") \
         .eq("user_id", request.user_id) \
         .order("created_at", desc=True) \
         .limit(10) \
@@ -119,9 +120,9 @@ def get_personalized_feed(request: UserFeedRequest):
     input_data = np.expand_dims(history_array, axis=0)
     user_engagement_score = float(cnn_model.predict(input_data, verbose=0)[0][0])
 
-    # 2. Find the video the user watched the most (Target Reel)
+# 2. Find the video the user watched the most (Target Reel)
     target_reel = max(interactions, key=lambda x: x.get("dwell_time", 0) or 0)
-    target_reel_id = target_reel.get("post_id")
+    target_reel_id = target_reel.get("reel_id") # <-- Change this to reel_id
 
     # 3. Query pgvector for visual similarity
     visual_scores = {}
@@ -148,3 +149,64 @@ def get_personalized_feed(request: UserFeedRequest):
 
     candidates.sort(key=blend_score, reverse=True)
     return {"reels": candidates[:request.limit], "mode": "ai_ranked"}
+
+
+
+class RankRequest(BaseModel):
+    history: List[List[float]]
+    candidate_ids: List[str]
+    target_reel_id: Optional[str] = None
+
+@router.post("/rank")
+def rank_feed(request: RankRequest):
+    # --- ENGINE 1: BEHAVIORAL (1D-CNN) ---
+    user_engagement_score = 0.5 # Default baseline
+    
+    if cnn_model and len(request.history) > 0:
+        history_array = np.array(request.history)
+        if len(history_array) < 10:
+            padding = np.zeros((10 - len(history_array), 5))
+            history_array = np.vstack((padding, history_array))
+        else:
+            history_array = history_array[-10:]
+
+        input_data = np.expand_dims(history_array, axis=0)
+        try:
+            user_engagement_score = float(cnn_model.predict(input_data, verbose=0)[0][0])
+        except Exception as e:
+            print(f"CNN Prediction failed: {e}")
+
+    # --- ENGINE 2: VISUAL SIMILARITY (pgvector) ---
+    visual_scores = {}
+    if request.target_reel_id:
+        try:
+            target_res = supabase.table("posts").select("visual_embedding").eq("id", request.target_reel_id).execute()
+            if target_res.data and target_res.data[0].get("visual_embedding"):
+                target_embedding = target_res.data[0]["visual_embedding"]
+                
+                similar_res = supabase.rpc("match_similar_reels", {
+                    "query_embedding": target_embedding,
+                    "match_threshold": 0.0,
+                    "match_count": 50 
+                }).execute()
+                
+                if similar_res.data:
+                    for item in similar_res.data:
+                        visual_scores[item["id"]] = item["similarity"]
+        except Exception as e:
+            print(f"Vector search failed: {e}")
+
+    # --- ENGINE 3: THE SYNTHESIS ALGORITHM ---
+    ranked_results = []
+    for vid_id in request.candidate_ids:
+        v_score = visual_scores.get(vid_id, 0.5) 
+        # Blend: 40% user engagement propensity + 60% visual content match
+        final_score = (user_engagement_score * 0.4) + (v_score * 0.6)
+        ranked_results.append({
+            "reel_id": vid_id,
+            "score": final_score
+        })
+
+    # Sort highest score to lowest
+    ranked_results.sort(key=lambda x: x["score"], reverse=True)
+    return ranked_results

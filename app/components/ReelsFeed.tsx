@@ -1,64 +1,138 @@
-"use client"
-import { useEffect, useMemo, useRef, useState } from "react";
+"use client";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createClient } from "@/utils/supabase/client";
-import { AiOutlineLoading3Quarters } from "react-icons/ai";
 import ReelItem from "./ReelItem";
 import { useUser } from "../context/UserContext";
 import { fetchRankedFeed, getRecentUserHistory } from "@/lib/api/reel-engine";
-
 
 interface ReelsFeedProps {
     initialReelId?: string;
 }
 
+const PAGE_SIZE = 5;
+
 export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
+    const supabase = useMemo(() => createClient(), []);
+    const { user: currentUser } = useUser();
 
-    const supabase = useMemo(() => createClient(), [])
-    const user = useUser();
-
-    // 1. ALL HOOKS MUST GO HERE AT THE TOP
     const [isGlobalMuted, setIsGlobalMuted] = useState(true);
     const [globalVolume, setGlobalVolume] = useState(1);
     const [reels, setReels] = useState<any[]>([]);
-    const [currentUser, setCurrentUser] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [page, setPage] = useState(0);
     const [isFetching, setIsFetching] = useState(false);
-    
-    const loadMoreRef = useRef<HTMLDivElement>(null);
-
     const [hasMore, setHasMore] = useState(true);
 
-    // 2. DEFINE FUNCTIONS
-    const loadMoreReels = async () => {
-        console.log("🔥 TRIGGERED: loadMoreReels function is running!");
-        if (isFetching) return;
+    const loadMoreRef = useRef<HTMLDivElement>(null);
+
+    // Rank candidate videos through the AI engine or engagement fallback
+    const rankCandidates = async (candidates: any[]) => {
+        if (!candidates || candidates.length === 0) return [];
+
+        try {
+            const candidateIds = candidates.map((r) => r.id);
+            const recentHistory = await getRecentUserHistory(currentUser?.id);
+            const targetReelId = reels.length > 0 ? reels[reels.length - 1].id : null;
+
+            const rankedResult = await fetchRankedFeed(recentHistory, candidateIds, targetReelId);
+
+            if (rankedResult && rankedResult.length > 0) {
+                const sorted = rankedResult
+                    .map((ranked: { reel_id: string; score: number }) =>
+                        candidates.find((r) => r.id === ranked.reel_id)
+                    )
+                    .filter(Boolean);
+                return sorted;
+            }
+        } catch (err) {
+            console.warn("AI ranking request failed, applying engagement fallback:", err);
+        }
+
+        // Fallback: Sort by like count if AI is unavailable or telemetry is empty
+        return [...candidates].sort((a, b) => (b.like_count || 0) - (a.like_count || 0));
+    };
+
+    // 1. Initial Load: Load first page and prioritize initialReelId
+    useEffect(() => {
+        const fetchInitialReels = async () => {
+            setIsLoading(true);
+
+            try {
+                const { data: rawReels, error } = await supabase
+                    .from("posts")
+                    .select(`
+                        id,
+                        content,
+                        video_url,
+                        subtitles_vtt,
+                        created_at,
+                        author:users ( id, username, first_name, last_name, profile_image ),
+                        likes ( user_id ),
+                        like_count,
+                        comment_count
+                    `)
+                    .eq("is_reel", true)
+                    .order("created_at", { ascending: false })
+                    .range(0, PAGE_SIZE - 1);
+
+                if (error || !rawReels || rawReels.length === 0) {
+                    setHasMore(false);
+                    setIsLoading(false);
+                    return;
+                }
+
+                const sortedReels = await rankCandidates(rawReels);
+
+                if (initialReelId) {
+                    const targetIndex = sortedReels.findIndex((r:any) => r.id === initialReelId);
+                    if (targetIndex > -1) {
+                        const [target] = sortedReels.splice(targetIndex, 1);
+                        sortedReels.unshift(target);
+                    } else {
+                        // If initialReelId wasn't in the first page, fetch it directly
+                        const { data: specificReel } = await supabase
+                            .from("posts")
+                            .select(`
+                                id,
+                                content,
+                                video_url,
+                                subtitles_vtt,
+                                created_at,
+                                author:users ( id, username, first_name, last_name, profile_image ),
+                                likes ( user_id ),
+                                like_count,
+                                comment_count
+                            `)
+                            .eq("id", initialReelId)
+                            .single();
+
+                        if (specificReel) sortedReels.unshift(specificReel);
+                    }
+                }
+
+                setReels(sortedReels);
+                setPage(1);
+            } catch (err) {
+                console.error("Initial reel load failed:", err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchInitialReels();
+    }, [initialReelId, currentUser?.id]);
+
+    // 2. Pagination: Load more reels using sequential range slices
+    const loadMoreReels = useCallback(async () => {
+        if (isFetching || !hasMore || isLoading) return;
         setIsFetching(true);
 
-        const startRange = 5 + ((page - 1) * 3);
-        const endRange = startRange + 2;
+        const from = page * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
 
-        console.log("before fetching from posts")
-        // Fetch raw next 10 reels from Supabase
         try {
-            // const { data: rawReels, error } = await supabase
-            //     .from("posts") 
-            //     .select(`
-            //             id,
-            //             content,
-            //             video_url,
-            //             created_at,
-            //             author:users ( id, username, first_name, last_name, profile_image ),
-            //             likes ( user_id ),
-            //             like_count,
-            //             comment_count
-            //         `)
-            //     .range(startRange, endRange)
-            //     .order("created_at", { ascending: false }).eq("is_reel", true);
-
-            //     console.log("fetched from posts")
             const { data: rawReels, error } = await supabase
-                .from("posts") 
+                .from("posts")
                 .select(`
                     id,
                     content,
@@ -70,150 +144,56 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
                     like_count,
                     comment_count
                 `)
-                .limit(2);
-
-            console.log("📍 Fetched from posts! Error status:", error);
+                .eq("is_reel", true)
+                .order("like_count", { ascending: false })
+                .range(from, to);
 
             if (error || !rawReels || rawReels.length === 0) {
-                console.log("No more reels to fetch or database error.");
                 setHasMore(false);
                 setIsFetching(false);
                 return;
             }
-        
 
-        const candidateIds = rawReels.map(r => r.id);
-        
-        // Fetch real history
-        const recentHistory = await getRecentUserHistory(currentUser?.id); 
+            const sortedNewReels = await rankCandidates(rawReels);
 
-        // --- NEW: Get the last watched video's ID ---
-        const targetReelId = reels.length > 0 ? reels[reels.length - 1].id : null;
+            setReels((prev) => {
+                const existingIds = new Set(prev.map((r) => r.id));
+                const uniqueNewReels = sortedNewReels.filter((r:any) => !existingIds.has(r.id));
 
-        console.log("before fetchRanedFeed")
-        // Fetch AI rankings
-        const rankedResult = await fetchRankedFeed(recentHistory, candidateIds, targetReelId);
-        console.log("After fetchRanedFeed")
-        console.log(rankedResult)
-        
-
-        const sortedReels = rankedResult.map((ranked: { reel_id: string, score: number }) => 
-            rawReels.find(r => r.id === ranked.reel_id)
-        ).filter(Boolean); 
-
-        let addedCount = 0;
-        // Update UI and increment page
-        // setReels(prev => [...prev, ...sortedReels]);
-        setReels(prev => {
-            // Only keep reels that don't already exist in the current feed
-            const uniqueReels = sortedReels.filter((newReel:any) => 
-                !prev.some(existingReel => existingReel.id === newReel.id)
-            );
-            addedCount = uniqueReels.length;
-            console.log(`📍 CHECKPOINT 6: Added ${addedCount} new unique videos to the screen!`);
-            return [...prev, ...uniqueReels];
-        });
-        setPage(prev => prev + 1);
-        setIsFetching(false);
-
-        if (addedCount === 0 && rawReels.length > 0) {
-            console.log("⚠️ ALL DUPLICATES FOUND. Instantly fetching the next page...");
-            
-            // We wrap it in a tiny timeout to let the React state (page + 1) settle first
-            setTimeout(() => {
-                const scrollContainer = document.querySelector('.custom-scroll-hidden');
-                // Nudge the scroll slightly to re-trigger the observer
-                if (scrollContainer) scrollContainer.scrollTop += 1; 
-            }, 100);
-        }
-        } catch(err) {
-            console.log(err)
-        }
-    };
-
-    // 3. ALL USE-EFFECTS GO HERE
-    useEffect(() => {
-        const fetchReelsData = async () => {
-            setCurrentUser(user?.user);
-
-            const { data, error } = await supabase
-                .from("posts")
-                .select(`
-                    id,
-                    content,
-                    video_url,
-                    created_at,
-                    author:users ( id, username, first_name, last_name, profile_image ),
-                    likes ( user_id ),
-                    like_count,
-                    comment_count
-                `)
-                .eq("is_reel", true)
-                .order("created_at", { ascending: false }).limit(5);
-
-            if (error) {
-                console.error("Error fetching reels:", error);
-            }
-            else if (data) {
-                if (initialReelId) {
-                    const targetReel = data.find(reel => reel.id === initialReelId);
-                    const otherReels = data.filter(reel => reel.id !== initialReelId);
-                    
-                    if (targetReel) {
-                        const shuffledOthers = otherReels.sort(() => Math.random() - 0.5);
-                        setReels([targetReel, ...shuffledOthers]);
-                    } else {
-                        setReels(data.sort(() => Math.random() - 0.5)); 
-                    }
-                } else {
-                    const shuffledData = [...data].sort(() => Math.random() - 0.5);
-                    setReels(shuffledData);
+                if (uniqueNewReels.length === 0) {
+                    setHasMore(false);
                 }
-            }
+                return [...prev, ...uniqueNewReels];
+            });
 
-            const feedContainer = document.querySelector('.custom-scroll-hidden');
-            if (feedContainer) {
-                feedContainer.scrollTo(0, 0);
-            }
+            setPage((prev) => prev + 1);
+        } catch (err) {
+            console.error("Pagination error:", err);
+        } finally {
+            setIsFetching(false);
+        }
+    }, [page, isFetching, hasMore, isLoading, currentUser?.id]);
 
-            setIsLoading(false);
-        };
-
-        fetchReelsData();
-    }, [initialReelId, supabase, user]);
-
+    // 3. Infinite Scroll Intersection Observer
     useEffect(() => {
-        // 1. Prevent the observer from running while the initial spinner is active
-        if (isLoading) return;
+        if (isLoading || !hasMore) return;
 
         const observer = new IntersectionObserver(
-            (entries) => {
-                console.log("hahhaa")
-                const [entry] = entries;
-                // 2. Fire the AI ranking request when the user hits the bottom
+            ([entry]) => {
                 if (entry.isIntersecting && !isFetching) {
-                    loadMoreReels(); 
+                    loadMoreReels();
                 }
             },
-            { threshold: 0.1 } 
+            { threshold: 0.1 }
         );
 
-        // 3. Attach the observer to the div
-        if (loadMoreRef.current) {
-            observer.observe(loadMoreRef.current);
-        }
+        const target = loadMoreRef.current;
+        if (target) observer.observe(target);
 
-        // Cleanup
-        return () => observer.disconnect();
-        
-    // 4. CRITICAL FIX: Add `isLoading`, `reels`, and `page` to the dependencies.
-    // This ensures the observer attaches AFTER the spinner disappears, 
-    // and guarantees loadMoreReels never uses stale data.
-    }, [isLoading, isFetching, page, reels, hasMore]);
-
-    // -------------------------------------------------------------
-    // 4. CONDITIONAL RETURNS MUST BE PLACED AFTER ALL HOOKS
-    // -------------------------------------------------------------
+        return () => {
+            if (target) observer.unobserve(target);
+        };
+    }, [loadMoreReels, isLoading, hasMore, isFetching]);
 
     if (isLoading) {
         return (
@@ -221,18 +201,6 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
                 <div className="relative w-full h-full flex flex-col items-center justify-center bg-gray-900 animate-pulse">
                     <div className="w-16 h-16 bg-gray-800 rounded-full mb-4"></div>
                     <div className="w-32 h-4 bg-gray-800 rounded"></div>
-                    
-                    {/* Fake Sidebar Skeleton */}
-                    <div className="absolute right-4 bottom-20 flex flex-col gap-6">
-                        <div className="w-10 h-10 bg-gray-800 rounded-full"></div>
-                        <div className="w-10 h-10 bg-gray-800 rounded-full"></div>
-                        <div className="w-10 h-10 bg-gray-800 rounded-full"></div>
-                    </div>
-                    {/* Fake Bottom Text Skeleton */}
-                    <div className="absolute left-4 bottom-4 flex flex-col gap-3">
-                        <div className="w-32 h-4 bg-gray-800 rounded"></div>
-                        <div className="w-48 h-3 bg-gray-800 rounded"></div>
-                    </div>
                 </div>
             </div>
         );
@@ -246,13 +214,12 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
         );
     }
 
-    // 5. FINAL COMPONENT RETURN
     return (
         <div className="w-full h-full place-items-center overflow-y-auto snap-y snap-mandatory relative custom-scroll-hidden">
             {reels.map((reel) => (
-                <ReelItem 
-                    key={reel.id} 
-                    reel={reel} 
+                <ReelItem
+                    key={reel.id}
+                    reel={reel}
                     currentUser={currentUser}
                     globalMuted={isGlobalMuted}
                     onToggleMuted={() => setIsGlobalMuted(!isGlobalMuted)}
@@ -260,34 +227,21 @@ export default function ReelsFeed({ initialReelId }: ReelsFeedProps) {
                     onVolumeChange={setGlobalVolume}
                 />
             ))}
+
             {hasMore && (
-                <div 
-                    ref={loadMoreRef} 
-                    // When fetching, it becomes a full-screen snap point. When not, it's a tiny invisible tripwire.
-                    className={`w-75 shrink-0 bg-black ${isFetching ? 'h-full snap-start' : 'h-[1px]'}`}
+                <div
+                    ref={loadMoreRef}
+                    className={`w-75 shrink-0 bg-black ${isFetching ? "h-full snap-start" : "h-[1px]"}`}
                 >
                     {isFetching && (
                         <div className="relative w-full h-full flex flex-col items-center justify-center bg-gray-900 animate-pulse">
                             <div className="w-16 h-16 bg-gray-800 rounded-full mb-4"></div>
                             <div className="w-32 h-4 bg-gray-800 rounded"></div>
-                            
-                            {/* Fake Sidebar Skeleton */}
-                            <div className="absolute right-4 bottom-20 flex flex-col gap-6">
-                                <div className="w-10 h-10 bg-gray-800 rounded-full"></div>
-                                <div className="w-10 h-10 bg-gray-800 rounded-full"></div>
-                                <div className="w-10 h-10 bg-gray-800 rounded-full"></div>
-                            </div>
-                            {/* Fake Bottom Text Skeleton */}
-                            <div className="absolute left-4 bottom-4 flex flex-col gap-3">
-                                <div className="w-32 h-4 bg-gray-800 rounded"></div>
-                                <div className="w-48 h-3 bg-gray-800 rounded"></div>
-                            </div>
                         </div>
                     )}
                 </div>
             )}
-            
-            {/* End of feed message */}
+
             {!hasMore && reels.length > 0 && (
                 <div className="w-full h-full snap-start flex items-center justify-center bg-black text-gray-500 pb-10">
                     You've seen all the reels!

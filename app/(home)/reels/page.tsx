@@ -35,7 +35,7 @@ export default async function ReelsIndexPage() {
             .from("posts")
             .select("id")
             .eq("is_reel", true)
-            .limit(50);
+            .limit(1);
 
         if (error || !reelsPool || reelsPool.length === 0) {
             return (
